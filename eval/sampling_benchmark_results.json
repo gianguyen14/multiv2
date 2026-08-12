@@ -1,0 +1,50 @@
+[
+  {
+    "strategy": "fixed_0.25fps",
+    "frame_count": 2,
+    "processing_time_ms": 99.42,
+    "storage_size_bytes": 400,
+    "first_timestamp_ms": 0,
+    "last_timestamp_ms": 4000
+  },
+  {
+    "strategy": "fixed_0.5fps",
+    "frame_count": 3,
+    "processing_time_ms": 92.91,
+    "storage_size_bytes": 600,
+    "first_timestamp_ms": 0,
+    "last_timestamp_ms": 4000
+  },
+  {
+    "strategy": "fixed_1fps",
+    "frame_count": 5,
+    "processing_time_ms": 96.28,
+    "storage_size_bytes": 1000,
+    "first_timestamp_ms": 0,
+    "last_timestamp_ms": 4000
+  },
+  {
+    "strategy": "fixed_2fps",
+    "frame_count": 10,
+    "processing_time_ms": 92.93,
+    "storage_size_bytes": 2000,
+    "first_timestamp_ms": 0,
+    "last_timestamp_ms": 4500
+  },
+  {
+    "strategy": "shot_fixed_1fps",
+    "frame_count": 5,
+    "processing_time_ms": 93.95,
+    "storage_size_bytes": 1000,
+    "first_timestamp_ms": 0,
+    "last_timestamp_ms": 4000
+  },
+  {
+    "strategy": "adaptive_dense",
+    "frame_count": 7,
+    "processing_time_ms": 93.69,
+    "storage_size_bytes": 1400,
+    "first_timestamp_ms": 0,
+    "last_timestamp_ms": 4999
+  }
+]
