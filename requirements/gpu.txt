@@ -1,0 +1,6 @@
+# GPU dependencies are installed explicitly for GPU environments.
+
+torch
+torchvision
+transformers
+accelerate

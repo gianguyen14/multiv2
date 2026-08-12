@@ -1,0 +1,36 @@
+# Python
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Runtime data
+
+data/raw/*
+data/processed/*
+data/indexes/*
+data/logs/*
+
+!data/raw/videos/.gitkeep
+!data/processed/.gitkeep
+!data/indexes/.gitkeep
+!data/logs/.gitkeep
+
+# Model/cache files
+.cache/
+models/
+*.pt
+*.pth
+*.onnx
+
+# OS
+.DS_Store
+Thumbs.db
