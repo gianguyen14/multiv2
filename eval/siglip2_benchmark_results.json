@@ -1,0 +1,429 @@
+{
+  "device": "cpu",
+  "embedding_dim": 768,
+  "model_load_time_s": 7.851,
+  "ram_usage_mb": 312.1,
+  "gpu_memory_mb": 0,
+  "results": [
+    {
+      "type": "text",
+      "count": 1,
+      "batch_size": 1,
+      "latency_ms": 23.43,
+      "latency_per_item_ms": 23.43,
+      "throughput_items_sec": 42.7,
+      "ram_delta_mb": 0.0,
+      "embedding_shape": [
+        1,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "text",
+      "count": 10,
+      "batch_size": 1,
+      "latency_ms": 248.53,
+      "latency_per_item_ms": 24.85,
+      "throughput_items_sec": 40.2,
+      "ram_delta_mb": 0.1,
+      "embedding_shape": [
+        10,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "text",
+      "count": 10,
+      "batch_size": 2,
+      "latency_ms": 224.07,
+      "latency_per_item_ms": 22.41,
+      "throughput_items_sec": 44.6,
+      "ram_delta_mb": 0.0,
+      "embedding_shape": [
+        10,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "text",
+      "count": 10,
+      "batch_size": 4,
+      "latency_ms": 125.35,
+      "latency_per_item_ms": 12.53,
+      "throughput_items_sec": 79.8,
+      "ram_delta_mb": 0.0,
+      "embedding_shape": [
+        10,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "text",
+      "count": 10,
+      "batch_size": 8,
+      "latency_ms": 109.13,
+      "latency_per_item_ms": 10.91,
+      "throughput_items_sec": 91.6,
+      "ram_delta_mb": 0.1,
+      "embedding_shape": [
+        10,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "text",
+      "count": 50,
+      "batch_size": 1,
+      "latency_ms": 1235.82,
+      "latency_per_item_ms": 24.72,
+      "throughput_items_sec": 40.5,
+      "ram_delta_mb": 0.1,
+      "embedding_shape": [
+        50,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "text",
+      "count": 50,
+      "batch_size": 2,
+      "latency_ms": 1123.1,
+      "latency_per_item_ms": 22.46,
+      "throughput_items_sec": 44.5,
+      "ram_delta_mb": 0.0,
+      "embedding_shape": [
+        50,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "text",
+      "count": 50,
+      "batch_size": 4,
+      "latency_ms": 629.91,
+      "latency_per_item_ms": 12.6,
+      "throughput_items_sec": 79.4,
+      "ram_delta_mb": 0.0,
+      "embedding_shape": [
+        50,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "text",
+      "count": 50,
+      "batch_size": 8,
+      "latency_ms": 456.39,
+      "latency_per_item_ms": 9.13,
+      "throughput_items_sec": 109.6,
+      "ram_delta_mb": 0.9,
+      "embedding_shape": [
+        50,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "text",
+      "count": 50,
+      "batch_size": 16,
+      "latency_ms": 350.04,
+      "latency_per_item_ms": 7.0,
+      "throughput_items_sec": 142.8,
+      "ram_delta_mb": 0.9,
+      "embedding_shape": [
+        50,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "text",
+      "count": 100,
+      "batch_size": 1,
+      "latency_ms": 2490.88,
+      "latency_per_item_ms": 24.91,
+      "throughput_items_sec": 40.1,
+      "ram_delta_mb": 0.1,
+      "embedding_shape": [
+        100,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "text",
+      "count": 100,
+      "batch_size": 2,
+      "latency_ms": 2221.37,
+      "latency_per_item_ms": 22.21,
+      "throughput_items_sec": 45.0,
+      "ram_delta_mb": 0.0,
+      "embedding_shape": [
+        100,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "text",
+      "count": 100,
+      "batch_size": 4,
+      "latency_ms": 1289.49,
+      "latency_per_item_ms": 12.89,
+      "throughput_items_sec": 77.5,
+      "ram_delta_mb": 0.0,
+      "embedding_shape": [
+        100,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "text",
+      "count": 100,
+      "batch_size": 8,
+      "latency_ms": 867.72,
+      "latency_per_item_ms": 8.68,
+      "throughput_items_sec": 115.2,
+      "ram_delta_mb": 0.0,
+      "embedding_shape": [
+        100,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "text",
+      "count": 100,
+      "batch_size": 16,
+      "latency_ms": 693.97,
+      "latency_per_item_ms": 6.94,
+      "throughput_items_sec": 144.1,
+      "ram_delta_mb": 0.0,
+      "embedding_shape": [
+        100,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "image",
+      "count": 1,
+      "batch_size": 1,
+      "latency_ms": 142.17,
+      "latency_per_item_ms": 142.17,
+      "throughput_items_sec": 7.0,
+      "ram_delta_mb": 0.0,
+      "embedding_shape": [
+        1,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "image",
+      "count": 10,
+      "batch_size": 1,
+      "latency_ms": 1458.41,
+      "latency_per_item_ms": 145.84,
+      "throughput_items_sec": 6.9,
+      "ram_delta_mb": 0.0,
+      "embedding_shape": [
+        10,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "image",
+      "count": 10,
+      "batch_size": 2,
+      "latency_ms": 1475.37,
+      "latency_per_item_ms": 147.54,
+      "throughput_items_sec": 6.8,
+      "ram_delta_mb": 0.0,
+      "embedding_shape": [
+        10,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "image",
+      "count": 10,
+      "batch_size": 4,
+      "latency_ms": 1445.8,
+      "latency_per_item_ms": 144.58,
+      "throughput_items_sec": 6.9,
+      "ram_delta_mb": 2.3,
+      "embedding_shape": [
+        10,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "image",
+      "count": 10,
+      "batch_size": 8,
+      "latency_ms": 1418.56,
+      "latency_per_item_ms": 141.86,
+      "throughput_items_sec": 7.0,
+      "ram_delta_mb": -18.2,
+      "embedding_shape": [
+        10,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "image",
+      "count": 50,
+      "batch_size": 1,
+      "latency_ms": 7428.59,
+      "latency_per_item_ms": 148.57,
+      "throughput_items_sec": 6.7,
+      "ram_delta_mb": 0.0,
+      "embedding_shape": [
+        50,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "image",
+      "count": 50,
+      "batch_size": 2,
+      "latency_ms": 7394.26,
+      "latency_per_item_ms": 147.89,
+      "throughput_items_sec": 6.8,
+      "ram_delta_mb": 0.0,
+      "embedding_shape": [
+        50,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "image",
+      "count": 50,
+      "batch_size": 4,
+      "latency_ms": 6860.41,
+      "latency_per_item_ms": 137.21,
+      "throughput_items_sec": 7.3,
+      "ram_delta_mb": 16.2,
+      "embedding_shape": [
+        50,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "image",
+      "count": 50,
+      "batch_size": 8,
+      "latency_ms": 7120.46,
+      "latency_per_item_ms": 142.41,
+      "throughput_items_sec": 7.0,
+      "ram_delta_mb": -33.2,
+      "embedding_shape": [
+        50,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "image",
+      "count": 50,
+      "batch_size": 16,
+      "latency_ms": 7791.96,
+      "latency_per_item_ms": 155.84,
+      "throughput_items_sec": 6.4,
+      "ram_delta_mb": -0.1,
+      "embedding_shape": [
+        50,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "image",
+      "count": 100,
+      "batch_size": 1,
+      "latency_ms": 16227.64,
+      "latency_per_item_ms": 162.28,
+      "throughput_items_sec": 6.2,
+      "ram_delta_mb": 0.0,
+      "embedding_shape": [
+        100,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "image",
+      "count": 100,
+      "batch_size": 2,
+      "latency_ms": 16203.32,
+      "latency_per_item_ms": 162.03,
+      "throughput_items_sec": 6.2,
+      "ram_delta_mb": 6.0,
+      "embedding_shape": [
+        100,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "image",
+      "count": 100,
+      "batch_size": 4,
+      "latency_ms": 14933.41,
+      "latency_per_item_ms": 149.33,
+      "throughput_items_sec": 6.7,
+      "ram_delta_mb": 22.7,
+      "embedding_shape": [
+        100,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "image",
+      "count": 100,
+      "batch_size": 8,
+      "latency_ms": 15212.33,
+      "latency_per_item_ms": 152.12,
+      "throughput_items_sec": 6.6,
+      "ram_delta_mb": -34.0,
+      "embedding_shape": [
+        100,
+        768
+      ],
+      "normalized": true
+    },
+    {
+      "type": "image",
+      "count": 100,
+      "batch_size": 16,
+      "latency_ms": 15179.96,
+      "latency_per_item_ms": 151.8,
+      "throughput_items_sec": 6.6,
+      "ram_delta_mb": 0.0,
+      "embedding_shape": [
+        100,
+        768
+      ],
+      "normalized": true
+    }
+  ]
+}
