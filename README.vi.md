@@ -1,21 +1,21 @@
 <div align="center">
 
-# 🎬 Unified AIC Retrieval
+# 🎬 Unified Video Retrieval
 
-### Hệ thống truy hồi video đa phương thức cho Ho Chi Minh City AI Challenge 2026
+### Hệ thống truy hồi video đa phương thức, ưu tiên vận hành cục bộ
 
-**Văn bản → Frame · Video Q&A · TRAKE · Tìm bằng ảnh · OCR · ASR · Tinh chỉnh theo thời gian**
+**Văn bản → Khung hình · Video Q&A · TRAKE · Tìm bằng ảnh · OCR · ASR · Tinh chỉnh theo thời gian**
 
-[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](#)
-[![Docker](https://img.shields.io/badge/Docker-Recommended-2496ED?logo=docker&logoColor=white)](#)
-[![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)](#)
-[![FAISS](https://img.shields.io/badge/FAISS-Vector_Search-0467DF)](#)
-[![SigLIP2](https://img.shields.io/badge/SigLIP2-768D-FF6F00)](#)
-[![Status](https://img.shields.io/badge/Release-1.1.0--rc2_prevalidation-orange)](#)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Recommended-2496ED?logo=docker&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)
+![FAISS](https://img.shields.io/badge/FAISS-Vector_Search-0467DF)
+![SigLIP2](https://img.shields.io/badge/SigLIP2-768D-FF6F00)
+![Status](https://img.shields.io/badge/Release-1.1.0--rc2_prevalidation-orange)
 
 **[English](README.md) · Tiếng Việt**
 
-*Một hệ thống retrieval ưu tiên chạy local/offline, được xây dựng để tìm đúng video, đúng frame và đúng chuỗi sự kiện theo thời gian.*
+*Hệ thống truy hồi (retrieval) ưu tiên khả năng chạy cục bộ và ngoại tuyến, tập trung vào việc tìm đúng video, đúng khung hình và đúng chuỗi sự kiện theo thời gian.*
 
 </div>
 
@@ -23,78 +23,78 @@
 
 ## ✨ Hệ thống làm được gì?
 
-| Chế độ | Đầu vào | Đầu ra | Tín hiệu chính |
+| Chế độ | Đầu vào | Kết quả | Tín hiệu chính |
 |---|---|---|---|
-| 🔎 **Textual KIS** | Mô tả bằng ngôn ngữ tự nhiên | Danh sách `video_id`, `frame_id` đã xếp hạng | SigLIP2 + OCR + ASR + fusion |
-| 💬 **Video Q&A** | Câu hỏi về nội dung video | Frame bằng chứng + đường dẫn trả lời | Visual + OCR + ASR |
-| 🧭 **TRAKE** | Chuỗi sự kiện có thứ tự | Một video + các keyframe theo đúng thứ tự | Coarse retrieval + temporal refinement + DP alignment |
-| 🖼️ **Image Search** | Ảnh truy vấn | Các frame giống về mặt thị giác | SigLIP2 image embeddings |
-| 🔤 **OCR / ASR** | Frame + âm thanh | Bằng chứng văn bản có thể tìm kiếm | Tesseract + Faster Whisper |
+| 🔎 **Textual KIS** | Mô tả bằng ngôn ngữ tự nhiên | Danh sách `video_id`, `frame_id` được xếp hạng | SigLIP2 + OCR + ASR + hợp nhất kết quả |
+| 💬 **Video Q&A** | Câu hỏi về nội dung video | Khung hình bằng chứng phục vụ bước trả lời | Hình ảnh + OCR + ASR |
+| 🧭 **TRAKE** | Chuỗi sự kiện có thứ tự | Một video + các khung hình đại diện theo đúng trình tự | Truy hồi thô + tinh chỉnh theo thời gian + DP alignment |
+| 🖼️ **Image Search** | Ảnh truy vấn | Các khung hình có nội dung hình ảnh tương đồng | SigLIP2 image embeddings |
+| 🔤 **OCR / ASR** | Khung hình + âm thanh | Văn bản có thể tìm kiếm | Tesseract + Faster Whisper |
 
-Lớp retrieval hỗ trợ truy vấn tiếng Việt và tiếng Anh, evidence-aware reranking, temporal deduplication và QueryRefiner local tùy chọn với deterministic fallback.
+Lớp truy hồi hỗ trợ truy vấn tiếng Việt và tiếng Anh, xếp hạng lại dựa trên bằng chứng, loại bớt kết quả trùng lặp theo thời gian và QueryRefiner cục bộ tùy chọn. Khi QueryRefiner không khả dụng, hệ thống có thể quay về bộ phân tích truy vấn xác định để tiếp tục hoạt động.
 
 ---
 
 ## 🧠 Kiến trúc tổng quan
 
 ```text
-                               ┌─────────────────────┐
-                               │      USER QUERY     │
-                               │ text / image / QA   │
-                               │ ordered TRAKE events│
-                               └──────────┬──────────┘
-                                          │
-                                          ▼
-                              ┌───────────────────────┐
-                              │   Query Intelligence  │
-                              │ VI/EN · lexical · LLM │
-                              └───────────┬───────────┘
-                                          │
-                    ┌─────────────────────┼─────────────────────┐
-                    │                     │                     │
-                    ▼                     ▼                     ▼
-             ┌─────────────┐       ┌─────────────┐       ┌─────────────┐
-             │   SigLIP2   │       │     OCR     │       │     ASR     │
-             │ visual/text │       │  Tesseract  │       │   Whisper   │
-             └──────┬──────┘       └──────┬──────┘       └──────┬──────┘
-                    │                     │                     │
-                    └─────────────────────┼─────────────────────┘
-                                          ▼
-                                ┌───────────────────┐
-                                │ Candidate Fusion  │
-                                │ RRF + reranking   │
-                                └─────────┬─────────┘
-                                          │
-                        ┌─────────────────┼─────────────────┐
-                        │                 │                 │
-                        ▼                 ▼                 ▼
-                      KIS               Q&A              TRAKE
-                                                          │
-                                                          ▼
-                                                Dense TemporalRefiner
-                                                          │
-                                                          ▼
-                                               Ordered DP alignment
+                            ┌──────────────────────┐
+                            │   TRUY VẤN NGƯỜI DÙNG│
+                            │ text / image / Q&A   │
+                            │ chuỗi sự kiện TRAKE  │
+                            └──────────┬───────────┘
+                                       │
+                                       ▼
+                           ┌────────────────────────┐
+                           │   Phân tích truy vấn   │
+                           │ VI/EN · từ khóa · LLM │
+                           └───────────┬────────────┘
+                                       │
+                 ┌─────────────────────┼─────────────────────┐
+                 │                     │                     │
+                 ▼                     ▼                     ▼
+          ┌─────────────┐       ┌─────────────┐       ┌─────────────┐
+          │   SigLIP2   │       │     OCR     │       │     ASR     │
+          │ ảnh / text  │       │  Tesseract  │       │   Whisper   │
+          └──────┬──────┘       └──────┬──────┘       └──────┬──────┘
+                 │                     │                     │
+                 └─────────────────────┼─────────────────────┘
+                                       ▼
+                             ┌───────────────────┐
+                             │ Hợp nhất ứng viên │
+                             │ RRF + reranking   │
+                             └─────────┬─────────┘
+                                       │
+                     ┌─────────────────┼─────────────────┐
+                     │                 │                 │
+                     ▼                 ▼                 ▼
+                   KIS               Q&A              TRAKE
+                                                       │
+                                                       ▼
+                                             Dense TemporalRefiner
+                                                       │
+                                                       ▼
+                                            Căn chỉnh thứ tự bằng DP
 ```
 
-### Frame ID là định danh chuẩn
+### `frame_id` là định danh chuẩn
 
-`frame_id` trả về là **chỉ số zero-based theo thứ tự frame mà PyAV giải mã tuần tự ở display order**.
+Mỗi `frame_id` trả về là **chỉ số bắt đầu từ 0 theo đúng thứ tự khung hình mà PyAV giải mã tuần tự để hiển thị**.
 
 ```python
 for frame_id, frame in enumerate(container.decode(stream)):
     ...
 ```
 
-Hệ thống **không** tái tạo frame ID chuẩn bằng `timestamp × FPS`. Điều này giúp ingestion, retrieval, evaluation và temporal refinement cùng dùng một hệ quy chiếu frame thống nhất.
+Hệ thống **không** suy ra `frame_id` chuẩn bằng công thức `timestamp × FPS`. Quy ước này giúp các bước nhập dữ liệu, truy hồi, đánh giá và tinh chỉnh theo thời gian cùng dùng một hệ quy chiếu khung hình thống nhất.
 
 ---
 
 # 🚀 Bắt đầu nhanh với Docker
 
-Docker là runtime được khuyến nghị trên **Linux** và **Windows 10/11**.
+Docker là cách chạy được khuyến nghị trên **Linux** và **Windows 10/11**.
 
-Image chứa các dependency Linux cốt lõi dùng bởi ứng dụng, gồm Python 3.12, FFmpeg, Tesseract, Git, GCC và G++.
+Docker image đã tích hợp các thành phần hệ thống cần thiết cho ứng dụng, gồm Python 3.12, FFmpeg, Tesseract, Git, GCC và G++.
 
 ## Yêu cầu
 
@@ -109,7 +109,7 @@ Image chứa các dependency Linux cốt lõi dùng bởi ứng dụng, gồm Py
 - Bật WSL2 backend
 - Git for Windows hoặc Git bên trong WSL2
 
-Trên Windows, cách đơn giản nhất là giữ video, model cache và processed artifacts bên trong thư mục repository.
+Trên Windows, cách đơn giản nhất là đặt video, bộ nhớ đệm model và dữ liệu đã xử lý ngay trong thư mục của repository.
 
 ## 1. Clone repository
 
@@ -118,9 +118,9 @@ git clone git@github.com:gianguyen14/multiv2.git
 cd multiv2
 ```
 
-> Repository đang private, vì vậy cần cấu hình SSH GitHub trước trên máy chạy.
+> Repository hiện ở chế độ private, vì vậy máy chạy cần được cấu hình quyền truy cập GitHub qua SSH trước.
 
-## 2. Tạo thư mục dữ liệu local
+## 2. Tạo các thư mục dữ liệu
 
 Linux / WSL2:
 
@@ -134,13 +134,13 @@ PowerShell:
 New-Item -ItemType Directory -Force data/test-videos, data/processed, models
 ```
 
-Đặt video nguồn tại:
+Đặt video nguồn vào:
 
 ```text
 data/test-videos/
 ```
 
-Docker mount mặc định:
+Các đường dẫn được Docker mount mặc định:
 
 ```text
 Host                       Container
@@ -150,50 +150,52 @@ Host                       Container
 ./models             -->   /models            read/write
 ```
 
-## 3. Build image
+## 3. Build Docker image
 
 ```bash
 docker compose build
 ```
 
-## 4. Kiểm tra runtime
+## 4. Kiểm tra môi trường chạy
 
 ```bash
 docker compose --profile tools run --rm worker env --check
 docker compose --profile tools run --rm worker doctor
 ```
 
+`doctor` là lệnh kiểm tra mức sẵn sàng của hệ thống trước khi xử lý dữ liệu hoặc chạy truy vấn.
+
 ## 5. Chuẩn bị model
 
-Chuẩn bị model visual + ASR mặc định:
+Chuẩn bị các model hình ảnh và ASR mặc định:
 
 ```bash
 docker compose --profile tools run --rm worker models --prepare
 ```
 
-Kiểm tra model hiện có:
+Kiểm tra các model hiện có:
 
 ```bash
 docker compose --profile tools run --rm worker models
 ```
 
-QueryRefiner local là tùy chọn:
+QueryRefiner cục bộ là thành phần tùy chọn:
 
 ```bash
 docker compose --profile tools run --rm worker models --prepare --query-refiner
 ```
 
-Nếu QueryRefiner chưa có model, search vẫn có thể dùng deterministic fallback.
+Nếu model của QueryRefiner chưa có sẵn, hệ thống vẫn có thể dùng đường xử lý dự phòng xác định.
 
-## 6. Preprocess / index video
+## 6. Tiền xử lý và lập chỉ mục video
 
 ```bash
 docker compose --profile tools run --rm worker preprocess /data/videos
 ```
 
-Lệnh này chạy ingestion pipeline theo cấu hình và tạo searchable artifacts bên trong processed directory đã mount. Các phần việc tương thích có thể được resume.
+Lệnh này chạy pipeline nhập dữ liệu theo cấu hình hiện tại và xuất các tệp phục vụ tìm kiếm vào thư mục dữ liệu đã xử lý. Những phần đã hoàn thành và còn tương thích có thể được tiếp tục thay vì chạy lại từ đầu.
 
-Kiểm tra trạng thái:
+Kiểm tra trạng thái sau khi xử lý:
 
 ```bash
 docker compose --profile tools run --rm worker status
@@ -223,7 +225,7 @@ Mở giao diện web:
 http://127.0.0.1:8000
 ```
 
-Health endpoints:
+Các endpoint kiểm tra tình trạng hệ thống:
 
 ```text
 http://127.0.0.1:8000/health/live
@@ -247,13 +249,15 @@ Invoke-WebRequest http://127.0.0.1:8000/health/ready
 
 # 🎮 Cách sử dụng
 
-Có ba cách chính để dùng project:
+Có ba cách chính để sử dụng hệ thống:
 
-1. **Web UI** — phù hợp nhất cho thao tác tương tác.
-2. **`projectctl.py` CLI** — phù hợp cho development, experiment, batch và validation.
-3. **FastAPI** — phù hợp khi tích hợp với ứng dụng hoặc frontend khác.
+1. **Web UI** — thuận tiện nhất khi tìm kiếm và kiểm tra kết quả trực tiếp.
+2. **`projectctl.py` CLI** — phù hợp cho phát triển, chạy thử nghiệm, xử lý hàng loạt và kiểm thử.
+3. **FastAPI** — phù hợp khi tích hợp với ứng dụng hoặc giao diện bên ngoài.
 
 ## Cách A — Web UI
+
+Khởi động backend:
 
 ```bash
 docker compose up -d backend
@@ -265,13 +269,13 @@ Sau đó mở:
 http://127.0.0.1:8000
 ```
 
-Frontend được FastAPI phục vụ trực tiếp nên workflow Docker thông thường không cần chạy thêm frontend server riêng.
+Frontend được FastAPI phục vụ trực tiếp, vì vậy khi chạy bằng Docker thông thường không cần khởi động thêm một frontend server riêng.
 
 ---
 
 ## Cách B — CLI với `projectctl.py`
 
-Trong Docker, dùng service `worker`:
+Trong Docker, các lệnh quản trị được chạy qua service `worker`:
 
 ```bash
 docker compose --profile tools run --rm worker --help
@@ -279,7 +283,7 @@ docker compose --profile tools run --rm worker --help
 
 ### 🔎 Textual KIS
 
-Tìm frame phù hợp với mô tả:
+Tìm các khung hình phù hợp với một mô tả:
 
 ```bash
 docker compose --profile tools run --rm worker \
@@ -296,63 +300,63 @@ Ví dụ truy vấn:
 
 ### 💬 Video Q&A
 
-Truy hồi bằng chứng cho câu hỏi:
+Truy hồi các khung hình và bằng chứng liên quan đến câu hỏi:
 
 ```bash
 docker compose --profile tools run --rm worker \
   qa "Nhiệt độ hiển thị trên màn hình là bao nhiêu?" --top-k 20
 ```
 
-Q&A kết hợp bằng chứng visual, OCR và ASR có sẵn trước khi xử lý bước trả lời tiếp theo.
+Luồng Q&A kết hợp những bằng chứng hình ảnh, OCR và ASR có sẵn trước khi chuyển sang bước xử lý câu trả lời tiếp theo.
 
 ### 🧭 TRAKE
 
-TRAKE tìm **chuỗi sự kiện có thứ tự trong cùng một video**.
+TRAKE dùng để tìm **một chuỗi sự kiện có thứ tự trong cùng một video**.
 
-Cú pháp phân tách bằng `|`:
+Cú pháp phân tách sự kiện bằng `|`:
 
 ```bash
 docker compose --profile tools run --rm worker \
   trake "người đứng yên | bắt đầu chạy | nhảy lên | tiếp đất" --top-k 30
 ```
 
-Cú pháp JSON:
+Hoặc truyền danh sách sự kiện bằng JSON:
 
 ```bash
 docker compose --profile tools run --rm worker \
   trake '["đứng", "chạy đà", "nhảy", "tiếp đất"]' --top-k 30
 ```
 
-TRAKE có thể chạy dense temporal refinement quanh các vùng coarse candidate rồi ép thứ tự sự kiện theo chiều thời gian.
+Sau khi tìm được vùng thời gian có triển vọng, TRAKE có thể giải mã và tìm kiếm dày hơn trong vùng đó, rồi dùng căn chỉnh theo thứ tự để bảo đảm các sự kiện xuất hiện đúng trình tự thời gian.
 
-Tắt dense temporal refinement để chẩn đoán:
+Tắt bước tinh chỉnh dày để chẩn đoán:
 
 ```bash
 docker compose --profile tools run --rm worker \
   trake "event one | event two" --no-temporal-refine
 ```
 
-### 🖼️ Tìm frame bằng ảnh
+### 🖼️ Tìm khung hình bằng ảnh
 
-Nếu ảnh truy vấn có sẵn trong container:
+Nếu ảnh truy vấn có sẵn bên trong container:
 
 ```bash
 docker compose --profile tools run --rm worker \
   image-search /data/videos/query.jpg --top-k 20
 ```
 
-Hoặc dùng HTTP image endpoint từ host.
+Bạn cũng có thể gửi ảnh trực tiếp qua HTTP API từ máy host như ví dụ ở phần dưới.
 
-### 🧠 Xem QueryPlan
+### 🧠 Xem cách hệ thống phân tích truy vấn
 
 ```bash
 docker compose --profile tools run --rm worker \
   query-plan "biển số xe 79H-6072" --task kis --json
 ```
 
-Lệnh này hữu ích để kiểm tra query expansion, lexical terms và đường chạy QueryRefiner local.
+Lệnh này giúp kiểm tra các biến thể truy vấn, từ khóa được trích xuất và đường xử lý QueryRefiner cục bộ.
 
-### 🩺 Chẩn đoán
+### 🩺 Chẩn đoán hệ thống
 
 ```bash
 docker compose --profile tools run --rm worker doctor
@@ -368,28 +372,19 @@ docker compose --profile tools run --rm worker \
   dataset verify /data/videos
 ```
 
-Workflow validation đại diện trong repository:
+Chạy quy trình kiểm tra dataset đại diện của repository:
 
 ```bash
 docker compose --profile tools run --rm worker validate-dataset
 ```
 
-### 📊 Evaluation
-
-```bash
-docker compose --profile tools run --rm worker \
-  evaluate --competition --ground-truth /path/to/ground_truth
-```
-
-Competition scorer có trong repository là **internal provisional metric**, không phải tuyên bố về official competition scoring.
-
 ---
 
 ## Cách C — HTTP API
 
-Service hiện tại expose retrieval API từ `backend.app.main`.
+Backend cung cấp API truy hồi từ `backend.app.main`.
 
-### KIS request
+### Truy vấn KIS
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/search \
@@ -401,7 +396,7 @@ curl -X POST http://127.0.0.1:8000/api/search \
   }'
 ```
 
-### Q&A request
+### Truy vấn Q&A
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/search \
@@ -413,7 +408,7 @@ curl -X POST http://127.0.0.1:8000/api/search \
   }'
 ```
 
-### TRAKE request
+### Truy vấn TRAKE
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/search \
@@ -428,16 +423,16 @@ curl -X POST http://127.0.0.1:8000/api/search \
   }'
 ```
 
-### Image search request
+### Tìm kiếm bằng ảnh
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/api/search/image?top_k=20" \
   -F "file=@query.jpg"
 ```
 
-Các định dạng ảnh hỗ trợ: JPEG, PNG và WebP. API giới hạn upload ảnh ở 15 MB.
+API hỗ trợ ảnh JPEG, PNG và WebP, với kích thước tối đa 15 MB mỗi lần gửi.
 
-### Debug QueryPlan qua API
+### Xem QueryPlan qua API
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/search \
@@ -452,7 +447,7 @@ curl -X POST http://127.0.0.1:8000/api/search \
 
 ---
 
-# 🧩 Workflow end-to-end điển hình
+# 🧩 Quy trình sử dụng điển hình từ đầu đến cuối
 
 ```text
 1. Đặt video vào data/test-videos/
@@ -476,19 +471,19 @@ curl -X POST http://127.0.0.1:8000/api/search \
 7. docker compose up -d backend
            │
            ▼
-8. Mở Web UI / chạy KIS / Q&A / TRAKE / image search
+8. Mở Web UI hoặc chạy KIS / Q&A / TRAKE / tìm bằng ảnh
            │
            ▼
-9. evaluate / benchmark / tune
+9. benchmark / tinh chỉnh
 ```
 
 ---
 
 # 🐳 Cấu hình Docker
 
-## Đổi vị trí data/model
+## Thay đổi vị trí dữ liệu và model
 
-Compose hỗ trợ:
+Docker Compose hỗ trợ các biến môi trường sau:
 
 ```text
 VIDEOS_DIR
@@ -498,20 +493,20 @@ HF_HUB_OFFLINE
 TRANSFORMERS_OFFLINE
 ```
 
-Ví dụ Linux / WSL2:
+Ví dụ trên Linux / WSL2:
 
 ```bash
 VIDEOS_DIR=/mnt/videos \
-PROCESSED_DIR=/mnt/aic-processed \
-MODELS_DIR=/mnt/aic-models \
+PROCESSED_DIR=/mnt/retrieval-processed \
+MODELS_DIR=/mnt/retrieval-models \
 docker compose up -d backend
 ```
 
-Trên Windows, nên ưu tiên path tương đối trong repository trừ khi Docker Desktop đã có quyền truy cập ổ đĩa/path bên ngoài.
+Trên Windows, nên ưu tiên đường dẫn tương đối trong repository, trừ khi Docker Desktop đã được cấp quyền truy cập vào ổ đĩa hoặc thư mục bên ngoài.
 
-## Chế độ offline
+## Chế độ ngoại tuyến
 
-Sau khi model weight cần thiết đã được cache vào thư mục model đã mount:
+Sau khi các model cần thiết đã được tải vào thư mục model được mount:
 
 Linux / WSL2:
 
@@ -527,19 +522,21 @@ $env:TRANSFORMERS_OFFLINE="1"
 docker compose up -d backend
 ```
 
-Kiểm tra model offline:
+Kiểm tra khả năng chạy model khi ngoại tuyến:
 
 ```bash
 docker compose --profile tools run --rm worker models --verify-offline
 ```
 
-## Dừng / build lại
+## Dừng hoặc build lại
+
+Dừng các service:
 
 ```bash
 docker compose down
 ```
 
-Sau khi source thay đổi:
+Sau khi thay đổi mã nguồn:
 
 ```bash
 docker compose up --build -d backend
@@ -549,7 +546,7 @@ docker compose up --build -d backend
 
 # ⚡ NVIDIA GPU / CUDA
 
-Repository có CUDA Compose override:
+Repository có sẵn file Docker Compose dành cho CUDA:
 
 ```bash
 docker compose \
@@ -558,34 +555,34 @@ docker compose \
   up --build -d backend
 ```
 
-Yêu cầu host:
+Yêu cầu trên máy host:
 
-- **Linux:** NVIDIA driver tương thích và Docker GPU/container runtime.
-- **Windows:** NVIDIA driver hỗ trợ GPU trong WSL2 và Docker Desktop dùng WSL2 backend.
+- **Linux:** NVIDIA driver tương thích và môi trường Docker có thể truy cập GPU.
+- **Windows:** NVIDIA driver hỗ trợ GPU trong WSL2 và Docker Desktop sử dụng WSL2 backend.
 
-Nên xác nhận Docker nhìn thấy GPU trước khi chạy CUDA override.
+Nên xác nhận Docker nhìn thấy GPU trước khi bật cấu hình CUDA.
 
-> ⚠️ **Ghi chú OCR cho RC2:** CUDA override vẫn có routing OCR GPU ở mức thử nghiệm. PaddleOCR GPU **chưa** thuộc runtime RC2 đã được chấp nhận. Để tái lập RC2, dùng Tesseract OCR cho đến khi CUDA/Paddle được validate riêng.
+> ⚠️ **Lưu ý OCR cho RC2:** file CUDA Compose hiện vẫn chứa cấu hình thử nghiệm cho OCR chạy bằng GPU. PaddleOCR GPU **chưa** nằm trong đường chạy RC2 đã được chấp nhận. Để giữ khả năng tái lập ở RC2, hãy dùng Tesseract cho OCR cho đến khi phần tích hợp CUDA/Paddle được kiểm thử riêng.
 
 ---
 
-# 🔬 Thiết kế retrieval
+# 🔬 Nguyên tắc thiết kế truy hồi
 
-### Sparse toàn cục, dense cục bộ
+### Lập chỉ mục thưa toàn cục, xử lý dày cục bộ
 
-FAISS index lưu lâu dài vẫn ở dạng sparse. Với TRAKE, dense decoding/embedding chỉ chạy trong vùng thời gian giới hạn quanh các coarse hit có triển vọng.
+Chỉ mục FAISS lưu lâu dài sử dụng các khung hình được lấy mẫu. Với TRAKE, việc giải mã và tạo embedding dày hơn chỉ diễn ra trong những vùng thời gian giới hạn quanh các kết quả thô có triển vọng. Cách này giúp tăng độ chính xác theo thời gian mà không phải lập chỉ mục dày cho toàn bộ video.
 
-### Ưu tiên bằng chứng
+### Ưu tiên bằng chứng, không chỉ dựa vào độ giống hình ảnh
 
-OCR và ASR có thể nâng hạng candidate mà visual similarity bỏ sót, ví dụ chữ, số, biển báo và nội dung lời nói.
+OCR và ASR có thể đưa những kết quả quan trọng lên cao hơn ngay cả khi độ tương đồng hình ảnh chưa đủ mạnh, đặc biệt với chữ, số, biển báo hoặc nội dung lời nói.
 
-### Thứ tự xác định được
+### Xếp hạng ổn định và có thể tái lập
 
-Fusion và reranking được thiết kế để giữ thứ tự ổn định và deterministic tie-breaking khi có thể.
+Các bước hợp nhất và xếp hạng lại được thiết kế để giữ thứ tự kết quả ổn định, đồng thời dùng quy tắc phá hòa xác định khi có thể.
 
-### Optional intelligence theo kiểu fail-open
+### Thành phần AI tùy chọn không làm gián đoạn hệ thống
 
-Các thành phần query refinement tùy chọn có thể rơi về deterministic parsing thay vì làm toàn bộ retrieval path bị gián đoạn.
+Những thành phần như QueryRefiner có thể được bật để cải thiện việc hiểu truy vấn. Nếu chúng không khả dụng, hệ thống ưu tiên quay về đường xử lý xác định thay vì làm toàn bộ chức năng truy hồi ngừng hoạt động.
 
 ---
 
@@ -598,7 +595,7 @@ python projectctl.py doctor
 pytest
 ```
 
-Chạy local server:
+Chạy server cục bộ:
 
 ```bash
 python projectctl.py dev
@@ -610,7 +607,7 @@ Mở:
 http://127.0.0.1:8000
 ```
 
-Help của revision đang checkout là tham chiếu CLI chính xác nhất:
+Để xem danh sách lệnh đúng với phiên bản mã nguồn hiện tại, dùng:
 
 ```bash
 python projectctl.py --help
@@ -621,16 +618,16 @@ python projectctl.py --help
 # 📁 Cấu trúc repository
 
 ```text
-backend/       ứng dụng chính và retrieval pipeline
-frontend/      operator UI được FastAPI phục vụ
-eval/          công cụ evaluation và benchmark
-scripts/       diagnostics, validation, dataset và experiment helpers
+backend/       ứng dụng chính và pipeline truy hồi
+frontend/      giao diện vận hành được FastAPI phục vụ trực tiếp
+eval/          công cụ đánh giá và benchmark
+scripts/       script chẩn đoán, kiểm thử, xử lý dataset và thử nghiệm
 tests/         unit test và integration test
-docs/          tài liệu kiến trúc, triển khai và engineering
-projectctl.py  operator CLI / entry point của project
+docs/          tài liệu kiến trúc, triển khai và ghi chú kỹ thuật
+projectctl.py  CLI quản trị và điểm vào chính của project
 ```
 
-## Tài liệu
+## Tài liệu liên quan
 
 - [Project Control CLI](docs/projectctl.md)
 - [Architecture](ARCHITECTURE.md)
@@ -641,13 +638,13 @@ projectctl.py  operator CLI / entry point của project
 
 # 🎯 Trạng thái hiện tại
 
-**`1.1.0-rc2` prevalidation source**
+**`1.1.0-rc2` — mã nguồn đang ở giai đoạn kiểm thử trước khi phát hành**
 
-Release candidate đang được validate trên môi trường NVIDIA GPU mục tiêu trước khi promote. Các tuyên bố về hiệu năng nên dựa trên dữ liệu competition đại diện và kết quả validation đã được ghi lại.
+RC2 hiện đang được kiểm thử trên môi trường NVIDIA GPU mục tiêu trước khi phát hành. Mọi tuyên bố về hiệu năng nên dựa trên dữ liệu đại diện và kết quả kiểm thử đã được ghi nhận.
 
 <div align="center">
 
-### Xây dựng cho chất lượng retrieval, tính đúng theo thời gian và khả năng tái lập experiment.
+### Tập trung vào chất lượng truy hồi, tính đúng theo thời gian và khả năng tái lập kết quả.
 
 **KIS · Q&A · TRAKE · OCR · ASR · SigLIP2 · FAISS · FastAPI**
 
