@@ -62,6 +62,9 @@ jobs:
           assert status["backend"] == "cpp"
           PY
 
+      - name: Native parity and microbenchmark
+        run: python scripts/benchmark_native_core.py --iterations 3
+
       - name: Runtime dependency check
         run: python projectctl.py env --check
 
