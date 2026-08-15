@@ -13,6 +13,8 @@
 ![SigLIP2](https://img.shields.io/badge/SigLIP2-768D-FF6F00)
 ![Status](https://img.shields.io/badge/Release-1.1.0--rc2_prevalidation-orange)
 
+**English · [Tiếng Việt](README.vi.md)**
+
 *A local/offline-friendly retrieval stack built to find the right video, the right frame, and the right temporal sequence — fast.*
 
 </div>
