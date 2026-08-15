@@ -26,7 +26,6 @@ from backend.app.video.text_evidence import normalize_text
 logger = logging.getLogger(__name__)
 
 
-
 def classify_exact_match(term: str, raw_text: str, norm_text: str) -> str:
     """Classifies match strength between an exact search term and candidate text evidence.
 
@@ -103,16 +102,16 @@ class CandidateReranker:
         asr_evidence: Optional[List[Any]] = None,
     ) -> List[Dict[str, Any]]:
         # Optional profiling (enabled via RERANKER_PROFILE=1)
-        profiling_enabled = os.getenv('RERANKER_PROFILE') == '1'
+        profiling_enabled = os.getenv("RERANKER_PROFILE") == "1"
         if profiling_enabled:
             prof = {
-                'start_time': time.perf_counter(),
-                'candidate_count': len(candidates),
-                'exact_term_count': len([ex for ex in plan.exact_strings if ex.strip()]),
-                'ocr_evidence_count': len(ocr_evidence) if ocr_evidence else 0,
-                'asr_evidence_count': len(asr_evidence) if asr_evidence else 0,
+                "start_time": time.perf_counter(),
+                "candidate_count": len(candidates),
+                "exact_term_count": len([ex for ex in plan.exact_strings if ex.strip()]),
+                "ocr_evidence_count": len(ocr_evidence) if ocr_evidence else 0,
+                "asr_evidence_count": len(asr_evidence) if asr_evidence else 0,
             }
-        
+
         exact_terms = [ex.strip() for ex in plan.exact_strings if ex.strip()]
         has_exact_requirement = len(exact_terms) > 0
 
@@ -126,7 +125,9 @@ class CandidateReranker:
             for o in ocr_evidence:
                 key = (o.video_id, o.source_frame_index_zero_based)
                 if key in cand_keys:
-                    ocr_by_cand.setdefault(key, []).append((getattr(o, "raw_text", ""), getattr(o, "normalized_text", "")))
+                    ocr_by_cand.setdefault(key, []).append(
+                        (getattr(o, "raw_text", ""), getattr(o, "normalized_text", ""))
+                    )
 
         asr_by_cand: Dict[Tuple[str, int], List[Tuple[str, str]]] = {}
         if has_exact_requirement and asr_evidence:
@@ -135,11 +136,12 @@ class CandidateReranker:
                 sf = getattr(a, "start_frame", None)
                 ef = getattr(a, "end_frame", None) or sf
                 if sf is not None:
-                    for (cvid, cfid) in cand_keys:
+                    for cvid, cfid in cand_keys:
                         if cvid == vid and sf <= cfid <= ef:
-                            asr_by_cand.setdefault((cvid, cfid), []).append((getattr(a, "raw_text", ""), getattr(a, "normalized_text", "")))
+                            asr_by_cand.setdefault((cvid, cfid), []).append(
+                                (getattr(a, "raw_text", ""), getattr(a, "normalized_text", ""))
+                            )
 
-        # Build candidate lookup
         scored_candidates = []
         for cand in candidates:
             vid = cand["video_id"]
@@ -147,25 +149,23 @@ class CandidateReranker:
             matched_by = set(cand.get("matched_by", []))
             base_rrf = float(cand.get("score", 0.0))
 
-            # Channel independence count
-            # Group visual variants as a single visual channel modality
+            # Group visual variants as a single independent modality.
             has_visual = any(
                 m.startswith("visual") or m.startswith("vi_") or m.startswith("en_")
                 for m in matched_by
             )
             has_ocr = "ocr" in matched_by
             has_asr = "asr" in matched_by
-            independent_channels = (1 if has_visual else 0) + (1 if has_ocr else 0) + (1 if has_asr else 0)
+            independent_channels = (
+                (1 if has_visual else 0) + (1 if has_ocr else 0) + (1 if has_asr else 0)
+            )
             if independent_channels == 0 and matched_by:
                 independent_channels = len(matched_by)
 
-            # Check exact evidence tier
-            exact_tier = 0  # 0: no exact match / none, 1: partial, 2: separator match, 3: full exact
+            exact_tier = 0
             matched_exact_terms = []
-
             if has_exact_requirement:
                 cand_texts = ocr_by_cand.get((vid, fid), []) + asr_by_cand.get((vid, fid), [])
-
                 max_match_type = "none"
                 for ex in exact_terms:
                     for raw_t, norm_t in cand_texts:
@@ -174,10 +174,13 @@ class CandidateReranker:
                             max_match_type = "full_exact"
                             matched_exact_terms.append(ex)
                             break
-                        elif m_type == "normalized_separator" and max_match_type != "full_exact":
+                        if m_type == "normalized_separator" and max_match_type != "full_exact":
                             max_match_type = "normalized_separator"
                             matched_exact_terms.append(ex)
-                        elif m_type == "partial" and max_match_type not in ("full_exact", "normalized_separator"):
+                        elif m_type == "partial" and max_match_type not in (
+                            "full_exact",
+                            "normalized_separator",
+                        ):
                             max_match_type = "partial"
 
                 if max_match_type == "full_exact":
@@ -187,11 +190,6 @@ class CandidateReranker:
                 elif max_match_type == "partial":
                     exact_tier = 1
 
-            # Deterministic sorting key:
-            # 1. Exact string evidence tier (3: full exact, 2: separator, 1: partial, 0: none)
-            # 2. Multi-channel agreement (3 channels > 2 channels > 1 channel)
-            # 3. Base RRF score (descending)
-            # 4. Tie-breakers: video_id, frame_id (ascending)
             sort_key = (
                 -exact_tier,
                 -independent_channels,
@@ -210,11 +208,11 @@ class CandidateReranker:
             }
             scored_candidates.append((sort_key, cand_copy))
 
-        # If profiling enabled, emit structured log with profiling metrics
         if profiling_enabled:
-            duration_ms = (time.perf_counter() - prof['start_time']) * 1000.0
-            prof['duration_ms'] = duration_ms
+            duration_ms = (time.perf_counter() - prof["start_time"]) * 1000.0
+            prof["duration_ms"] = duration_ms
             logger.info("candidate_reranker_profile", extra=prof)
-        # Prepare result list
-        result = [c for _, c in scored_candidates]
-        return result
+
+        # The tuple was intentionally constructed as an ordering key; apply it.
+        scored_candidates.sort(key=lambda item: item[0])
+        return [candidate for _, candidate in scored_candidates]
