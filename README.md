@@ -1,8 +1,8 @@
 <div align="center">
 
-# 🎬 Unified AIC Retrieval
+# 🎬 Unified Video Retrieval
 
-### Multimodal Video Retrieval for Ho Chi Minh City AI Challenge 2026
+### Local-first multimodal video retrieval
 
 **Text → Frames · Video Q&A · TRAKE · Image Search · OCR · ASR · Temporal Refinement**
 
@@ -15,7 +15,7 @@
 
 **English · [Tiếng Việt](README.vi.md)**
 
-*A local/offline-friendly retrieval stack built to find the right video, the right frame, and the right temporal sequence — fast.*
+*A local/offline-friendly retrieval stack built to find the right video, the right frame, and the right temporal sequence.*
 
 </div>
 
@@ -26,7 +26,7 @@
 | Mode | Input | Output | Main signals |
 |---|---|---|---|
 | 🔎 **Textual KIS** | Natural-language description | Ranked `video_id`, `frame_id` | SigLIP2 + OCR + ASR + fusion |
-| 💬 **Video Q&A** | Question about video content | Evidence frames + answer path | Visual + OCR + ASR evidence |
+| 💬 **Video Q&A** | Question about video content | Evidence frames for answer handling | Visual + OCR + ASR evidence |
 | 🧭 **TRAKE** | Ordered semantic events | One video + ordered keyframes | Coarse retrieval + temporal refinement + DP alignment |
 | 🖼️ **Image Search** | Query image | Visually similar frames | SigLIP2 image embeddings |
 | 🔤 **OCR / ASR** | Frames + audio | Searchable text evidence | Tesseract + Faster Whisper |
@@ -134,7 +134,7 @@ PowerShell:
 New-Item -ItemType Directory -Force data/test-videos, data/processed, models
 ```
 
-Put your source videos in:
+Put source videos in:
 
 ```text
 data/test-videos/
@@ -163,9 +163,11 @@ docker compose --profile tools run --rm worker env --check
 docker compose --profile tools run --rm worker doctor
 ```
 
+`doctor` is the main readiness check before preprocessing data or serving queries.
+
 ## 5. Prepare the models
 
-Prepare the default visual + ASR models:
+Prepare the default visual and ASR models:
 
 ```bash
 docker compose --profile tools run --rm worker models --prepare
@@ -177,7 +179,7 @@ Inspect model availability:
 docker compose --profile tools run --rm worker models
 ```
 
-Optional local query-refiner model:
+Optional local QueryRefiner model:
 
 ```bash
 docker compose --profile tools run --rm worker models --prepare --query-refiner
@@ -185,13 +187,13 @@ docker compose --profile tools run --rm worker models --prepare --query-refiner
 
 If the QueryRefiner model is unavailable, search can use the deterministic fallback path.
 
-## 6. Preprocess / index videos
+## 6. Preprocess and index videos
 
 ```bash
 docker compose --profile tools run --rm worker preprocess /data/videos
 ```
 
-This performs the configured ingestion pipeline and publishes searchable artifacts under the mounted processed directory. Preprocessing resumes compatible work when possible.
+This runs the configured ingestion pipeline and publishes searchable artifacts under the mounted processed directory. Compatible completed work can be resumed instead of repeated from scratch.
 
 Check state afterward:
 
@@ -247,11 +249,11 @@ Invoke-WebRequest http://127.0.0.1:8000/health/ready
 
 # 🎮 How to use the system
 
-You can use the project in three ways:
+There are three main interfaces:
 
-1. **Web UI** — easiest interactive workflow.
-2. **`projectctl.py` CLI** — best for development, experiments, batch work and validation.
-3. **FastAPI** — best for external applications and custom frontends.
+1. **Web UI** — the easiest way to search and inspect results interactively.
+2. **`projectctl.py` CLI** — useful for development, experiments, batch work and validation.
+3. **FastAPI** — useful for integrations and custom frontends.
 
 ## Option A — Web UI
 
@@ -267,7 +269,7 @@ Then open:
 http://127.0.0.1:8000
 ```
 
-The frontend is served directly by FastAPI, so no second frontend server is required for the normal Docker workflow.
+The frontend is served directly by FastAPI, so the normal Docker workflow does not require a separate frontend server.
 
 ---
 
@@ -288,7 +290,7 @@ docker compose --profile tools run --rm worker \
   kis "một người phụ nữ mặc áo dài" --top-k 20
 ```
 
-Useful for queries such as:
+Example queries:
 
 ```text
 "a red car crossing an intersection"
@@ -325,7 +327,7 @@ docker compose --profile tools run --rm worker \
   trake '["đứng", "chạy đà", "nhảy", "tiếp đất"]' --top-k 30
 ```
 
-TRAKE can use dense temporal refinement around coarse candidate regions and then enforce monotonic event ordering.
+TRAKE can decode and search more densely around promising temporal regions, then enforce monotonic event ordering.
 
 Disable dense temporal refinement for diagnostics:
 
@@ -343,7 +345,7 @@ docker compose --profile tools run --rm worker \
   image-search /data/videos/query.jpg --top-k 20
 ```
 
-Or use the HTTP image endpoint from the host; see the API examples below.
+You can also upload an image through the HTTP API from the host.
 
 ### 🧠 Inspect the query plan
 
@@ -370,28 +372,17 @@ docker compose --profile tools run --rm worker \
   dataset verify /data/videos
 ```
 
-For the repository's representative validation workflow:
+Run the repository's representative validation workflow:
 
 ```bash
 docker compose --profile tools run --rm worker validate-dataset
 ```
 
-### 📊 Evaluation
-
-Competition-style internal evaluation:
-
-```bash
-docker compose --profile tools run --rm worker \
-  evaluate --competition --ground-truth /path/to/ground_truth
-```
-
-The checked-in competition scorer is an **internal provisional metric**, not an official competition scoring claim.
-
 ---
 
 ## Option C — HTTP API
 
-The active service exposes the retrieval API from `backend.app.main`.
+The active backend exposes the retrieval API from `backend.app.main`.
 
 ### KIS request
 
@@ -483,7 +474,7 @@ curl -X POST http://127.0.0.1:8000/api/search \
 8. Open Web UI / run KIS / Q&A / TRAKE / image search
            │
            ▼
-9. evaluate / benchmark / tune
+9. benchmark / tune
 ```
 
 ---
@@ -506,12 +497,12 @@ Example on Linux / WSL2:
 
 ```bash
 VIDEOS_DIR=/mnt/videos \
-PROCESSED_DIR=/mnt/aic-processed \
-MODELS_DIR=/mnt/aic-models \
+PROCESSED_DIR=/mnt/retrieval-processed \
+MODELS_DIR=/mnt/retrieval-models \
 docker compose up -d backend
 ```
 
-For Windows, repository-relative paths are recommended unless Docker Desktop has access to the external drive/path.
+For Windows, repository-relative paths are recommended unless Docker Desktop has access to the external drive or path.
 
 ## Offline mode
 
@@ -577,7 +568,7 @@ Verify Docker GPU access before running the CUDA override.
 
 ### Sparse globally, dense locally
 
-The permanent FAISS index stays sparse. For TRAKE, dense decoding/embedding happens only inside bounded temporal regions around promising coarse hits.
+The permanent FAISS index stays sparse. For TRAKE, dense decoding and embedding happen only inside bounded temporal regions around promising coarse hits.
 
 ### Evidence before cosmetics
 
@@ -647,7 +638,7 @@ projectctl.py  operator CLI / project entry point
 
 **`1.1.0-rc2` prevalidation source**
 
-The release candidate is being validated against the target NVIDIA GPU environment before promotion. Performance claims should be based on representative competition data and recorded validation results.
+The release candidate is being validated against the target NVIDIA GPU environment before promotion. Performance claims should be based on representative datasets and recorded validation results.
 
 <div align="center">
 
