@@ -56,3 +56,5 @@ Thumbs.db
 
 /qa_output.txt
 /trace_output.txt
+
+/.claude/settings.local.json

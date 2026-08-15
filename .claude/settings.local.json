@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(git clone *)",
-      "Bash(xargs -0 -I {} bash -c 'if grep -q \"FastAPI\" \"{}\"; then echo \"{}\"; fi')"
-    ]
-  }
-}
