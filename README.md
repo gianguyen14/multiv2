@@ -1,136 +1,209 @@
-# Unified AIC Retrieval
+<div align="center">
 
-Multimodal video retrieval system for **AIC 2026**, focused on fast and reliable retrieval from long-form video collections.
+# 🎬 Unified AIC Retrieval
 
-The project combines visual embeddings, speech, OCR, temporal reasoning, and evidence-aware ranking in a local/offline-friendly pipeline.
+### Multimodal Video Retrieval for Ho Chi Minh City AI Challenge 2026
 
-## What it supports
+**Text → Frames · Video Q&A · TRAKE · Image Search · OCR · ASR · Temporal Refinement**
 
-- **Textual KIS** — retrieve the most relevant video frames from a natural-language description.
-- **Video Q&A** — retrieve supporting evidence and return the associated answer.
-- **TRAKE** — retrieve an ordered sequence of semantic keyframes for multi-event temporal queries.
-- **Image-to-frame search** — use an image as the query against indexed video frames.
-- **OCR / ASR evidence** — combine text visible in frames with spoken content from video audio.
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Recommended-2496ED?logo=docker&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)
+![FAISS](https://img.shields.io/badge/FAISS-Vector_Search-0467DF)
+![SigLIP2](https://img.shields.io/badge/SigLIP2-768D-FF6F00)
+![Status](https://img.shields.io/badge/Release-1.1.0--rc2_prevalidation-orange)
 
-## Core stack
+*A local/offline-friendly retrieval stack built to find the right video, the right frame, and the right temporal sequence — fast.*
 
-- **SigLIP2** — visual/text embeddings.
-- **FAISS** — vector search over normalized frame embeddings.
-- **Faster Whisper** — speech recognition.
-- **Tesseract OCR** — OCR baseline for the current release path.
-- **PyAV / FFmpeg** — authoritative video decoding and media processing.
-- **FastAPI** — retrieval API.
+</div>
 
-## Retrieval pipeline
+---
+
+## ✨ What this system does
+
+| Mode | Input | Output | Main signals |
+|---|---|---|---|
+| 🔎 **Textual KIS** | Natural-language description | Ranked `video_id`, `frame_id` | SigLIP2 + OCR + ASR + fusion |
+| 💬 **Video Q&A** | Question about video content | Evidence frames + answer path | Visual + OCR + ASR evidence |
+| 🧭 **TRAKE** | Ordered semantic events | One video + ordered keyframes | Coarse retrieval + temporal refinement + DP alignment |
+| 🖼️ **Image Search** | Query image | Visually similar frames | SigLIP2 image embeddings |
+| 🔤 **OCR / ASR** | Frames + audio | Searchable text evidence | Tesseract + Faster Whisper |
+
+The retrieval layer supports Vietnamese and English query variants, evidence-aware reranking, temporal deduplication, and an optional local QueryRefiner with deterministic fallback.
+
+---
+
+## 🧠 Architecture at a glance
 
 ```text
-Video
-  │
-  ├─ Decode / sample frames
-  ├─ Visual embedding (SigLIP2)
-  ├─ ASR (Faster Whisper)
-  ├─ OCR (Tesseract)
-  │
-  ▼
-FAISS + metadata index
-  │
-  ▼
-Query intelligence
-  │
-  ├─ visual / semantic path
-  ├─ OCR lexical path
-  ├─ ASR lexical path
-  └─ Vietnamese / English query variants
-  │
-  ▼
-Fusion + evidence-aware reranking
-  │
-  ├─ KIS
-  ├─ Q&A
-  └─ TRAKE + temporal refinement
+                               ┌─────────────────────┐
+                               │      USER QUERY     │
+                               │ text / image / QA   │
+                               │ ordered TRAKE events│
+                               └──────────┬──────────┘
+                                          │
+                                          ▼
+                              ┌───────────────────────┐
+                              │   Query Intelligence  │
+                              │ VI/EN · lexical · LLM │
+                              └───────────┬───────────┘
+                                          │
+                    ┌─────────────────────┼─────────────────────┐
+                    │                     │                     │
+                    ▼                     ▼                     ▼
+             ┌─────────────┐       ┌─────────────┐       ┌─────────────┐
+             │   SigLIP2   │       │     OCR     │       │     ASR     │
+             │ visual/text │       │  Tesseract  │       │   Whisper   │
+             └──────┬──────┘       └──────┬──────┘       └──────┬──────┘
+                    │                     │                     │
+                    └─────────────────────┼─────────────────────┘
+                                          ▼
+                                ┌───────────────────┐
+                                │ Candidate Fusion  │
+                                │ RRF + reranking   │
+                                └─────────┬─────────┘
+                                          │
+                        ┌─────────────────┼─────────────────┐
+                        │                 │                 │
+                        ▼                 ▼                 ▼
+                      KIS               Q&A              TRAKE
+                                                          │
+                                                          ▼
+                                                Dense TemporalRefiner
+                                                          │
+                                                          ▼
+                                               Ordered DP alignment
 ```
 
-## Important frame-ID invariant
+### Frame identity is authoritative
 
-Authoritative frame IDs are **zero-based frame ordinals produced by sequential PyAV decoding in display order**.
+A result `frame_id` is the **zero-based ordinal emitted by sequential PyAV decoding in display order**.
 
-They are never reconstructed from `timestamp × FPS`. This keeps indexed frames, evaluation output, and temporal refinement aligned with the source video.
+```python
+for frame_id, frame in enumerate(container.decode(stream)):
+    ...
+```
 
-## TRAKE coarse-to-fine retrieval
+The system does **not** reconstruct authoritative frame IDs using `timestamp × FPS`. This keeps ingestion, retrieval, evaluation, and temporal refinement aligned with the source video.
 
-TRAKE first retrieves sparse global candidates, then performs dense temporal refinement only around promising regions. Ordered events are aligned monotonically inside the same video.
+---
 
-This keeps the permanent index compact while allowing higher temporal resolution where it matters.
+# 🚀 Quick Start with Docker
 
-## Current status
+Docker is the recommended runtime on **Linux** and **Windows 10/11**.
 
-**1.1.0-rc2 prevalidation source**
+The image contains the core Linux dependencies used by the application, including Python 3.12, FFmpeg, Tesseract, Git, GCC and G++.
 
-The current release candidate is being validated on the target NVIDIA GPU environment before promotion. PaddleOCR GPU is not part of the accepted RC2 runtime path; the current OCR baseline is Tesseract.
+## Requirements
 
-## Docker quick start
-
-Docker is the recommended way to run the project because the image already includes the Linux runtime dependencies used by the application, including Python 3.12, FFmpeg, Tesseract, Git, GCC and G++.
-
-### Requirements
-
-**Linux**
+### Linux
 
 - Docker Engine
 - Docker Compose v2 (`docker compose`)
 
-**Windows 10/11**
+### Windows 10/11
 
 - Docker Desktop
-- WSL2 backend enabled in Docker Desktop
-- Run the commands below from PowerShell, Windows Terminal, or a WSL2 shell
+- WSL2 backend enabled
+- Git for Windows or Git inside WSL2
 
-For the simplest Windows setup, keep videos, processed data, and model caches inside the cloned repository so Docker can use relative paths without Windows drive-path conversion issues.
+For Windows, keeping videos, model caches, and processed artifacts inside the cloned repository is the simplest setup.
 
-### 1. Clone the repository
+## 1. Clone
 
 ```bash
 git clone git@github.com:gianguyen14/multiv2.git
 cd multiv2
 ```
 
-Because the repository is private, configure GitHub SSH access on the machine before cloning.
+> The repository is private, so configure GitHub SSH access on the machine first.
 
-### 2. Create local data directories
+## 2. Create local storage
+
+Linux / WSL2:
 
 ```bash
 mkdir -p data/test-videos data/processed models
 ```
 
-On PowerShell, the equivalent is:
+PowerShell:
 
 ```powershell
 New-Item -ItemType Directory -Force data/test-videos, data/processed, models
 ```
 
-Place input videos in:
+Put your source videos in:
 
 ```text
 data/test-videos/
 ```
 
-The default Compose configuration mounts:
+Default Docker mounts:
 
 ```text
-./data/test-videos  -> /data/videos      (read-only)
-./data/processed    -> /data/processed   (read/write)
-./models            -> /models           (read/write)
+Host                       Container
+------------------------------------------------
+./data/test-videos   -->   /data/videos       read-only
+./data/processed     -->   /data/processed    read/write
+./models             -->   /models            read/write
 ```
 
-### 3. Build and start the backend
+## 3. Build the image
 
 ```bash
-docker compose up --build -d backend
+docker compose build
 ```
 
-The first build can take a while because system and Python dependencies must be installed.
+## 4. Check the runtime
 
-Check container status:
+```bash
+docker compose --profile tools run --rm worker env --check
+docker compose --profile tools run --rm worker doctor
+```
+
+## 5. Prepare the models
+
+Prepare the default visual + ASR models:
+
+```bash
+docker compose --profile tools run --rm worker models --prepare
+```
+
+Inspect model availability:
+
+```bash
+docker compose --profile tools run --rm worker models
+```
+
+Optional local query-refiner model:
+
+```bash
+docker compose --profile tools run --rm worker models --prepare --query-refiner
+```
+
+If the QueryRefiner model is unavailable, search can use the deterministic fallback path.
+
+## 6. Preprocess / index videos
+
+```bash
+docker compose --profile tools run --rm worker preprocess /data/videos
+```
+
+This performs the configured ingestion pipeline and publishes searchable artifacts under the mounted processed directory. Preprocessing resumes compatible work when possible.
+
+Check state afterward:
+
+```bash
+docker compose --profile tools run --rm worker status
+```
+
+## 7. Start the application
+
+```bash
+docker compose up -d backend
+```
+
+Check containers:
 
 ```bash
 docker compose ps
@@ -142,69 +215,282 @@ Follow logs:
 docker compose logs -f backend
 ```
 
-The API is bound to localhost by default:
+Open the web interface:
 
 ```text
 http://127.0.0.1:8000
 ```
 
-Health endpoint:
+Health endpoints:
 
 ```text
 http://127.0.0.1:8000/health/live
+http://127.0.0.1:8000/health/ready
+http://127.0.0.1:8000/health
 ```
 
-Linux / WSL2 health check:
+Linux / WSL2:
 
 ```bash
-curl http://127.0.0.1:8000/health/live
+curl http://127.0.0.1:8000/health/ready
 ```
 
-PowerShell health check:
+PowerShell:
 
 ```powershell
-Invoke-WebRequest http://127.0.0.1:8000/health/live
+Invoke-WebRequest http://127.0.0.1:8000/health/ready
 ```
 
-### 4. Run projectctl inside Docker
+---
 
-The `worker` service is a tools profile whose entry point is `projectctl.py`.
+# 🎮 How to use the system
 
-Show available commands:
+You can use the project in three ways:
+
+1. **Web UI** — easiest interactive workflow.
+2. **`projectctl.py` CLI** — best for development, experiments, batch work and validation.
+3. **FastAPI** — best for external applications and custom frontends.
+
+## Option A — Web UI
+
+Start the backend:
+
+```bash
+docker compose up -d backend
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8000
+```
+
+The frontend is served directly by FastAPI, so no second frontend server is required for the normal Docker workflow.
+
+---
+
+## Option B — CLI with `projectctl.py`
+
+Inside Docker, use the `worker` service:
 
 ```bash
 docker compose --profile tools run --rm worker --help
 ```
 
-Run diagnostics:
+### 🔎 Textual KIS
+
+Find frames matching a description:
+
+```bash
+docker compose --profile tools run --rm worker \
+  kis "một người phụ nữ mặc áo dài" --top-k 20
+```
+
+Useful for queries such as:
+
+```text
+"a red car crossing an intersection"
+"người đàn ông đang đứng trước màn hình lớn"
+"biển số xe 79H-6072"
+```
+
+### 💬 Video Q&A
+
+Retrieve evidence for a question:
+
+```bash
+docker compose --profile tools run --rm worker \
+  qa "Nhiệt độ hiển thị trên màn hình là bao nhiêu?" --top-k 20
+```
+
+Q&A retrieval combines available visual, OCR and ASR evidence before downstream answer handling.
+
+### 🧭 TRAKE
+
+TRAKE searches for an **ordered event sequence inside the same video**.
+
+Pipe-separated syntax:
+
+```bash
+docker compose --profile tools run --rm worker \
+  trake "người đứng yên | bắt đầu chạy | nhảy lên | tiếp đất" --top-k 30
+```
+
+JSON syntax:
+
+```bash
+docker compose --profile tools run --rm worker \
+  trake '["đứng", "chạy đà", "nhảy", "tiếp đất"]' --top-k 30
+```
+
+TRAKE can use dense temporal refinement around coarse candidate regions and then enforce monotonic event ordering.
+
+Disable dense temporal refinement for diagnostics:
+
+```bash
+docker compose --profile tools run --rm worker \
+  trake "event one | event two" --no-temporal-refine
+```
+
+### 🖼️ Image-to-frame search
+
+If the query image is available inside the container:
+
+```bash
+docker compose --profile tools run --rm worker \
+  image-search /data/videos/query.jpg --top-k 20
+```
+
+Or use the HTTP image endpoint from the host; see the API examples below.
+
+### 🧠 Inspect the query plan
+
+```bash
+docker compose --profile tools run --rm worker \
+  query-plan "biển số xe 79H-6072" --task kis --json
+```
+
+This is useful for understanding query expansion, lexical terms, and the local QueryRefiner path.
+
+### 🩺 Diagnostics
 
 ```bash
 docker compose --profile tools run --rm worker doctor
+docker compose --profile tools run --rm worker status
+docker compose --profile tools run --rm worker info
+docker compose --profile tools run --rm worker smoke
 ```
 
-Inspect models:
+### 📦 Dataset validation
 
 ```bash
-docker compose --profile tools run --rm worker models
+docker compose --profile tools run --rm worker \
+  dataset verify /data/videos
 ```
 
-Prepare configured local models when required:
+For the repository's representative validation workflow:
 
 ```bash
-docker compose --profile tools run --rm worker models --prepare
+docker compose --profile tools run --rm worker validate-dataset
 ```
 
-Run preprocessing against the mounted video directory:
+### 📊 Evaluation
+
+Competition-style internal evaluation:
 
 ```bash
-docker compose --profile tools run --rm worker preprocess /data/videos
+docker compose --profile tools run --rm worker \
+  evaluate --competition --ground-truth /path/to/ground_truth
 ```
 
-Use `python projectctl.py --help` or the worker help output from the checked-out revision as the authoritative command list.
+The checked-in competition scorer is an **internal provisional metric**, not an official competition scoring claim.
 
-### 5. Override data/model locations
+---
 
-The Compose file supports these environment variables:
+## Option C — HTTP API
+
+The active service exposes the retrieval API from `backend.app.main`.
+
+### KIS request
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "một người phụ nữ mặc áo dài",
+    "query_type": "kis",
+    "top_k": 20
+  }'
+```
+
+### Q&A request
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "Nhiệt độ hiển thị là bao nhiêu?",
+    "query_type": "qa",
+    "top_k": 20
+  }'
+```
+
+### TRAKE request
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query_type": "trake",
+    "events": ["đứng", "chạy", "nhảy", "tiếp đất"],
+    "top_k": 30,
+    "temporal_refine": true,
+    "query_refine": true,
+    "rerank": true
+  }'
+```
+
+### Image search request
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/search/image?top_k=20" \
+  -F "file=@query.jpg"
+```
+
+Supported image formats are JPEG, PNG and WebP. The API limits image uploads to 15 MB.
+
+### Debug the QueryPlan through the API
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "biển số xe 79H-6072",
+    "query_type": "kis",
+    "top_k": 20,
+    "debug_query_plan": true
+  }'
+```
+
+---
+
+# 🧩 Typical end-to-end workflow
+
+```text
+1. Put videos in data/test-videos/
+           │
+           ▼
+2. docker compose build
+           │
+           ▼
+3. models --prepare
+           │
+           ▼
+4. doctor
+           │
+           ▼
+5. preprocess /data/videos
+           │
+           ▼
+6. status
+           │
+           ▼
+7. docker compose up -d backend
+           │
+           ▼
+8. Open Web UI / run KIS / Q&A / TRAKE / image search
+           │
+           ▼
+9. evaluate / benchmark / tune
+```
+
+---
+
+# 🐳 Docker configuration
+
+## Override data/model locations
+
+Compose supports:
 
 ```text
 VIDEOS_DIR
@@ -223,11 +509,11 @@ MODELS_DIR=/mnt/aic-models \
 docker compose up -d backend
 ```
 
-For Windows, relative repository paths are recommended unless Docker Desktop has file sharing configured for the external drive/path.
+For Windows, repository-relative paths are recommended unless Docker Desktop has access to the external drive/path.
 
-### 6. Offline mode
+## Offline mode
 
-After the required model files are already present under the mounted model directory, run with Hugging Face / Transformers network access disabled:
+After required weights are already cached in the mounted model directory:
 
 Linux / WSL2:
 
@@ -243,92 +529,128 @@ $env:TRANSFORMERS_OFFLINE="1"
 docker compose up -d backend
 ```
 
-### 7. Stop the stack
+Verify offline model readiness:
+
+```bash
+docker compose --profile tools run --rm worker models --verify-offline
+```
+
+## Stop / rebuild
 
 ```bash
 docker compose down
 ```
 
-To rebuild after source changes:
+After source changes:
 
 ```bash
 docker compose up --build -d backend
 ```
 
-### NVIDIA GPU / CUDA
+---
 
-The repository includes `docker-compose.cuda.yml` as a CUDA override:
+# ⚡ NVIDIA GPU / CUDA
+
+The repository includes a CUDA Compose override:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.cuda.yml up --build -d backend
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.cuda.yml \
+  up --build -d backend
 ```
 
-GPU prerequisites depend on the host:
+Host prerequisites:
 
-- Linux: NVIDIA driver plus Docker/NVIDIA container GPU support.
-- Windows: NVIDIA driver with WSL2 GPU support and Docker Desktop using the WSL2 backend.
+- **Linux:** compatible NVIDIA driver and Docker GPU/container runtime support.
+- **Windows:** NVIDIA driver with WSL2 GPU support and Docker Desktop using the WSL2 backend.
 
-Verify Docker can see the GPU before using the CUDA override.
+Verify Docker GPU access before running the CUDA override.
 
-> **RC2 note:** the CUDA Compose override currently contains experimental OCR GPU routing. PaddleOCR GPU is **not** part of the accepted RC2 runtime path yet. For RC2 acceptance/reproducibility, use the Tesseract OCR path until CUDA/Paddle integration has been validated separately.
+> ⚠️ **RC2 OCR note:** the CUDA override still contains experimental GPU OCR routing. PaddleOCR GPU is **not** part of the accepted RC2 runtime path yet. For RC2 reproducibility, use the Tesseract OCR path until CUDA/Paddle integration is validated separately.
 
-## Development without Docker
+---
 
-Install the project in editable mode:
+# 🔬 Retrieval design
+
+### Sparse globally, dense locally
+
+The permanent FAISS index stays sparse. For TRAKE, dense decoding/embedding happens only inside bounded temporal regions around promising coarse hits.
+
+### Evidence before cosmetics
+
+OCR and ASR evidence can promote candidates that visual similarity alone would miss, including text, numbers, signage and spoken details.
+
+### Deterministic ordering
+
+Fusion and reranking are designed to preserve stable ordering and deterministic tie-breaking wherever possible.
+
+### Fail-open optional intelligence
+
+Optional query-refinement components can fall back to deterministic parsing instead of making the whole retrieval path unavailable.
+
+---
+
+# 🛠️ Development without Docker
 
 ```bash
 python -m pip install -e .
-```
-
-Run the test suite:
-
-```bash
+python projectctl.py env --check
+python projectctl.py doctor
 pytest
 ```
 
-Verify imports:
+Run the local server:
 
 ```bash
-python -c "import backend; import backend.app; print('imports: OK')"
+python projectctl.py dev
 ```
 
-## Project control CLI
+Open:
 
-The repository includes `projectctl.py` as the operator entry point for local project workflows.
+```text
+http://127.0.0.1:8000
+```
+
+Use the checked-out revision's help output as the authoritative CLI reference:
 
 ```bash
 python projectctl.py --help
 ```
 
-Use the command help from the checked-out revision as the authoritative list of available operations.
+---
 
-## Repository layout
+# 📁 Repository layout
 
 ```text
-backend/       application and retrieval pipeline
+backend/       active application and retrieval pipeline
+frontend/      FastAPI-served operator UI
 eval/          evaluation and benchmark utilities
-scripts/       diagnostics, validation, dataset, and experiment helpers
+scripts/       diagnostics, validation, dataset and experiment helpers
 tests/         unit and integration tests
-docs/          additional project documentation
-projectctl.py  operator CLI
+docs/          architecture, deployment and engineering notes
+projectctl.py  operator CLI / project entry point
 ```
 
 ## Documentation
 
+- [Project Control CLI](docs/projectctl.md)
 - [Architecture](ARCHITECTURE.md)
-- [Engineering / agent rules](AGENTS.md)
-
-## Design goals
-
-The project prioritizes:
-
-- deterministic frame identity;
-- reproducible offline execution;
-- sparse global indexing with bounded dense refinement;
-- evidence-aware ranking instead of visual similarity alone;
-- graceful fallback when optional components are unavailable;
-- competition-oriented ranking quality and temporal diversity.
+- [Deployment](docs/DEPLOYMENT.md)
+- [Engineering / Agent Rules](AGENTS.md)
 
 ---
 
-**Unified AIC Retrieval** is under active development for AIC 2026. Performance claims should be based on representative competition data and the corresponding validation results.
+# 🎯 Current status
+
+**`1.1.0-rc2` prevalidation source**
+
+The release candidate is being validated against the target NVIDIA GPU environment before promotion. Performance claims should be based on representative competition data and recorded validation results.
+
+<div align="center">
+
+### Built for retrieval quality, temporal correctness and reproducible experimentation.
+
+**KIS · Q&A · TRAKE · OCR · ASR · SigLIP2 · FAISS · FastAPI**
+
+</div>
