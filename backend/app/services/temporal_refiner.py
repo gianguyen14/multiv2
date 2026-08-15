@@ -34,6 +34,7 @@ from backend.app.core.config import (
     TRAKE_TEMPORAL_REFINE_SAMPLE_FPS,
     TRAKE_TEMPORAL_REFINE_WINDOW_SECONDS,
 )
+from backend.app.native import merge_temporal_regions, smooth_scores
 from backend.app.retrieval.trake import EventCandidate
 from backend.app.video.atomic_io import write_json_atomic, write_numpy_atomic
 
@@ -256,7 +257,7 @@ class TemporalRefiner:
         video_regions: Dict[str, List[TemporalRegion]] = {}
         total_regions_count = 0
 
-        # Sort videos by maximum coarse candidate score to prioritize top candidate videos
+        # Sort videos by maximum coarse candidate score to prioritize top candidate videos.
         sorted_videos = sorted(
             candidates_by_video.keys(),
             key=lambda v: max((c.score for c in candidates_by_video[v]), default=0.0),
@@ -268,52 +269,27 @@ class TemporalRefiner:
             fps, total_frames = self.get_video_fps_and_count(video_id)
             delta_frames = max(1, int(round(self.config.window_seconds * fps)))
 
-            # Build raw windows for each candidate frame
-            raw_intervals: List[Tuple[int, int, int, float]] = []
-            for cand in cands:
-                start_f = max(0, cand.frame_id - delta_frames)
-                end_f = min(total_frames - 1, cand.frame_id + delta_frames)
-                raw_intervals.append((start_f, end_f, cand.frame_id, cand.score))
+            merged = merge_temporal_regions(
+                [cand.frame_id for cand in cands],
+                [cand.score for cand in cands],
+                delta_frames,
+                total_frames,
+                self.config.max_regions_per_video,
+            )
 
-            # Sort by start frame
-            raw_intervals.sort(key=lambda item: item[0])
-
-            # Merge overlapping intervals
-            merged: List[Dict[str, Any]] = []
-            for start_f, end_f, fid, score in raw_intervals:
-                if not merged or start_f > merged[-1]["end_frame"]:
-                    merged.append({
-                        "start_frame": start_f,
-                        "end_frame": end_f,
-                        "candidates": [fid],
-                        "max_score": score,
-                    })
-                else:
-                    # Overlap: extend existing window
-                    merged[-1]["end_frame"] = max(merged[-1]["end_frame"], end_f)
-                    merged[-1]["candidates"].append(fid)
-                    merged[-1]["max_score"] = max(merged[-1]["max_score"], score)
-
-            # Limit per video
-            if len(merged) > self.config.max_regions_per_video:
-                merged.sort(key=lambda item: -item["max_score"])
-                merged = merged[: self.config.max_regions_per_video]
-                merged.sort(key=lambda item: item["start_frame"])
-
-            # Convert to TemporalRegion instances
             reg_list: List[TemporalRegion] = []
-            for item in merged:
+            for start_frame, end_frame, source_frames, max_score in merged:
                 if total_regions_count >= self.config.max_total_regions:
                     break
                 reg_list.append(
                     TemporalRegion(
                         video_id=video_id,
-                        start_frame=item["start_frame"],
-                        end_frame=item["end_frame"],
-                        start_seconds=item["start_frame"] / fps,
-                        end_seconds=item["end_frame"] / fps,
-                        source_candidate_frames=tuple(sorted(set(item["candidates"]))),
-                        max_candidate_score=item["max_score"],
+                        start_frame=start_frame,
+                        end_frame=end_frame,
+                        start_seconds=start_frame / fps,
+                        end_seconds=end_frame / fps,
+                        source_candidate_frames=tuple(sorted(set(source_frames))),
+                        max_candidate_score=max_score,
                     )
                 )
                 total_regions_count += 1
@@ -353,7 +329,7 @@ class TemporalRefiner:
         )
 
         for region in regions:
-            # Determine step
+            # Determine step.
             step = max(1, int(round(fps / self.config.sample_fps)))
             num_frames = (region.end_frame - region.start_frame) // step + 1
             if num_frames > self.config.max_frames_per_region:
@@ -363,7 +339,6 @@ class TemporalRefiner:
                 video_id, video_path, region, step, encoder_identity
             )
 
-            # Check cache
             if self.cache:
                 cached = self.cache.get(video_id, region.region_key, fingerprint)
                 if cached is not None:
@@ -380,7 +355,6 @@ class TemporalRefiner:
         if video_path is None or not video_path.is_file():
             raise FileNotFoundError(f"Source video for {video_id} not found")
 
-        # Map target ordinals to region indices
         target_ordinals: Set[int] = set()
         region_targets: Dict[str, Set[int]] = {}
         for region, step, _ in regions_to_decode:
@@ -398,10 +372,9 @@ class TemporalRefiner:
                 if stream is None:
                     raise RuntimeError(f"No video stream found in {video_path}")
 
-                # Strict PyAV sequential decode invariant
+                # Strict PyAV sequential decode invariant.
                 for ordinal, frame in enumerate(container.decode(stream)):
                     if ordinal in target_ordinals:
-                        # Extract PIL image only for target frames
                         time_base = frame.time_base or stream.time_base
                         ts = float(Fraction(frame.pts) * Fraction(time_base)) if frame.pts is not None and time_base else None
                         decoded_frames[ordinal] = {
@@ -418,7 +391,6 @@ class TemporalRefiner:
         timings["dense_decode_ms"] += (time.perf_counter() - t_decode_start) * 1000.0
         counters["dense_frames_decoded"] += len(decoded_frames)
 
-        # Process embeddings region by region
         t_embed_start = time.perf_counter()
         for region, step, fingerprint in regions_to_decode:
             reg_key = region.region_key
@@ -441,7 +413,6 @@ class TemporalRefiner:
             if not reg_images:
                 continue
 
-            # Batch encode
             embeddings = encoder.encode_image(reg_images, batch_size=min(16, len(reg_images)))
             counters["dense_frames_embedded"] += len(reg_images)
 
@@ -465,7 +436,6 @@ class TemporalRefiner:
 
         timings["dense_embedding_ms"] += (time.perf_counter() - t_embed_start) * 1000.0
 
-        # Close all PIL images immediately to free RAM
         for item in decoded_frames.values():
             if "image" in item and hasattr(item["image"], "close"):
                 item["image"].close()
@@ -489,25 +459,15 @@ class TemporalRefiner:
             if len(records) == 0:
                 continue
 
-            # Cosine similarity: (1, dim) @ (N, dim).T -> (N,)
             raw_sims = (text_embedding @ embeddings.T).flatten()
+            smoothed = smooth_scores(raw_sims, w_vis, w_temp, pool_win)
 
-            N = len(raw_sims)
-            smoothed_scores = np.zeros(N, dtype=np.float32)
-
-            for j in range(N):
-                # Local pooling window [j - pool_win, j + pool_win]
-                start_idx = max(0, j - pool_win)
-                end_idx = min(N, j + pool_win + 1)
-                local_mean = float(np.mean(raw_sims[start_idx:end_idx]))
-                smoothed_scores[j] = float(w_vis * raw_sims[j] + w_temp * local_mean)
-
-            for j, rec in enumerate(records):
+            for idx, rec in enumerate(records):
                 candidates.append(
                     EventCandidate(
                         video_id=video_id,
                         frame_id=rec["frame_id"],
-                        score=float(smoothed_scores[j]),
+                        score=float(smoothed[idx]),
                     )
                 )
 
@@ -557,7 +517,6 @@ class TemporalRefiner:
             return coarse_candidates_by_event, metrics
 
         try:
-            # 1. Build merged candidate regions
             t_reg_start = time.perf_counter()
             video_regions = self.build_candidate_regions(coarse_candidates_by_event)
             metrics["region_build_ms"] = (time.perf_counter() - t_reg_start) * 1000.0
@@ -569,10 +528,8 @@ class TemporalRefiner:
                 metrics["total_ms"] = (time.perf_counter() - t_total_start) * 1000.0
                 return coarse_candidates_by_event, metrics
 
-            # 2. Encode event text queries
             event_embeddings = enc.encode_text(events)
 
-            # 3. Dense decode & embed per video
             timings = {"dense_decode_ms": 0.0, "dense_embedding_ms": 0.0}
             counters = {"dense_frames_decoded": 0, "dense_frames_embedded": 0, "cache_hits": 0, "cache_misses": 0}
 
@@ -594,7 +551,6 @@ class TemporalRefiner:
             metrics["cache_hits"] = counters["cache_hits"]
             metrics["cache_misses"] = counters["cache_misses"]
 
-            # 4. Dense scoring & candidate pool expansion
             t_score_start = time.perf_counter()
             refined_candidates_by_event: List[List[EventCandidate]] = []
 
@@ -607,7 +563,6 @@ class TemporalRefiner:
                     dense_cands = self._score_event_candidates(event_query, event_emb, region_dict, video_id)
                     dense_candidates.extend(dense_cands)
 
-                # Merge dense candidates with coarse candidates, deduplicating by (video_id, frame_id)
                 cand_map: Dict[Tuple[str, int], float] = {}
                 for cand in coarse_list:
                     cand_map[(cand.video_id, cand.frame_id)] = cand.score
@@ -619,7 +574,6 @@ class TemporalRefiner:
                     EventCandidate(video_id=vid, frame_id=fid, score=score)
                     for (vid, fid), score in cand_map.items()
                 ]
-                # Sort by score desc, frame_id asc
                 merged_list.sort(key=lambda item: (-item.score, item.frame_id))
                 refined_candidates_by_event.append(merged_list)
 
