@@ -497,8 +497,8 @@ Ví dụ trên Linux / WSL2:
 
 ```bash
 VIDEOS_DIR=/mnt/videos \
-PROCESSED_DIR=/mnt/aic-processed \
-MODELS_DIR=/mnt/aic-models \
+PROCESSED_DIR=/mnt/retrieval-processed \
+MODELS_DIR=/mnt/retrieval-models \
 docker compose up -d backend
 ```
 
