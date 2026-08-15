@@ -1,8 +1,8 @@
 <div align="center">
 
-# 🎬 Unified AIC Retrieval
+# 🎬 Unified Video Retrieval
 
-### Hệ thống truy hồi video đa phương thức cho Ho Chi Minh City AI Challenge 2026
+### Hệ thống truy hồi video đa phương thức, ưu tiên vận hành cục bộ
 
 **Văn bản → Khung hình · Video Q&A · TRAKE · Tìm bằng ảnh · OCR · ASR · Tinh chỉnh theo thời gian**
 
@@ -378,15 +378,6 @@ Chạy quy trình kiểm tra dataset đại diện của repository:
 docker compose --profile tools run --rm worker validate-dataset
 ```
 
-### 📊 Đánh giá
-
-```bash
-docker compose --profile tools run --rm worker \
-  evaluate --competition --ground-truth /path/to/ground_truth
-```
-
-Bộ chấm điểm competition có trong repository hiện là **thước đo nội bộ mang tính tạm thời**, không phải khẳng định về cách chấm điểm chính thức của cuộc thi.
-
 ---
 
 ## Cách C — HTTP API
@@ -483,7 +474,7 @@ curl -X POST http://127.0.0.1:8000/api/search \
 8. Mở Web UI hoặc chạy KIS / Q&A / TRAKE / tìm bằng ảnh
            │
            ▼
-9. evaluate / benchmark / tinh chỉnh
+9. benchmark / tinh chỉnh
 ```
 
 ---
@@ -649,7 +640,7 @@ projectctl.py  CLI quản trị và điểm vào chính của project
 
 **`1.1.0-rc2` — mã nguồn đang ở giai đoạn kiểm thử trước khi phát hành**
 
-RC2 hiện đang được kiểm thử trên môi trường NVIDIA GPU mục tiêu trước khi phát hành. Mọi tuyên bố về hiệu năng nên dựa trên dữ liệu đại diện cho bài thi và kết quả kiểm thử đã được ghi nhận.
+RC2 hiện đang được kiểm thử trên môi trường NVIDIA GPU mục tiêu trước khi phát hành. Mọi tuyên bố về hiệu năng nên dựa trên dữ liệu đại diện và kết quả kiểm thử đã được ghi nhận.
 
 <div align="center">
 
