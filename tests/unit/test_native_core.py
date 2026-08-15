@@ -38,7 +38,9 @@ def test_temporal_nms_cpp_matches_python(monkeypatch):
     cpp = _run_in_mode(
         monkeypatch, "cpp", temporal_nms_indices, video_ids, frame_ids, 60, 5
     )
-    assert cpp == py == [0, 2, 3, 5, 6]
+    # a: 100 kept, 120 suppressed, 161 kept, 220 suppressed because gap=59.
+    # b: 5 kept, 50 suppressed. c: 1 kept.
+    assert cpp == py == [0, 2, 3, 6]
 
 
 def test_temporal_region_merge_cpp_matches_python(monkeypatch):
