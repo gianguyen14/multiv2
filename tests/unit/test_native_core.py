@@ -107,7 +107,9 @@ def test_trake_cpp_respects_gap_and_transition_penalty(monkeypatch):
     py = _run_in_mode(monkeypatch, "python", align_trake_events, frames, scores, 0.01, 50)
     cpp = _run_in_mode(monkeypatch, "cpp", align_trake_events, frames, scores, 0.01, 50)
     assert cpp == py
-    assert cpp == pytest.approx((1.9, [20, 30]))
+    assert cpp is not None
+    assert cpp[1] == [20, 30]
+    assert cpp[0] == pytest.approx(1.9)
 
 
 def test_public_trake_aligner_runs_in_required_cpp_mode(monkeypatch):
