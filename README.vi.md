@@ -2,40 +2,40 @@
 
 # 🎬 Unified AIC Retrieval
 
-### Multimodal Video Retrieval for Ho Chi Minh City AI Challenge 2026
+### Hệ thống truy hồi video đa phương thức cho Ho Chi Minh City AI Challenge 2026
 
-**Text → Frames · Video Q&A · TRAKE · Image Search · OCR · ASR · Temporal Refinement**
+**Văn bản → Frame · Video Q&A · TRAKE · Tìm bằng ảnh · OCR · ASR · Tinh chỉnh theo thời gian**
 
-![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-Recommended-2496ED?logo=docker&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)
-![FAISS](https://img.shields.io/badge/FAISS-Vector_Search-0467DF)
-![SigLIP2](https://img.shields.io/badge/SigLIP2-768D-FF6F00)
-![Status](https://img.shields.io/badge/Release-1.1.0--rc2_prevalidation-orange)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](#)
+[![Docker](https://img.shields.io/badge/Docker-Recommended-2496ED?logo=docker&logoColor=white)](#)
+[![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)](#)
+[![FAISS](https://img.shields.io/badge/FAISS-Vector_Search-0467DF)](#)
+[![SigLIP2](https://img.shields.io/badge/SigLIP2-768D-FF6F00)](#)
+[![Status](https://img.shields.io/badge/Release-1.1.0--rc2_prevalidation-orange)](#)
 
-**English · [Tiếng Việt](README.vi.md)**
+**[English](README.md) · Tiếng Việt**
 
-*A local/offline-friendly retrieval stack built to find the right video, the right frame, and the right temporal sequence — fast.*
+*Một hệ thống retrieval ưu tiên chạy local/offline, được xây dựng để tìm đúng video, đúng frame và đúng chuỗi sự kiện theo thời gian.*
 
 </div>
 
 ---
 
-## ✨ What this system does
+## ✨ Hệ thống làm được gì?
 
-| Mode | Input | Output | Main signals |
+| Chế độ | Đầu vào | Đầu ra | Tín hiệu chính |
 |---|---|---|---|
-| 🔎 **Textual KIS** | Natural-language description | Ranked `video_id`, `frame_id` | SigLIP2 + OCR + ASR + fusion |
-| 💬 **Video Q&A** | Question about video content | Evidence frames + answer path | Visual + OCR + ASR evidence |
-| 🧭 **TRAKE** | Ordered semantic events | One video + ordered keyframes | Coarse retrieval + temporal refinement + DP alignment |
-| 🖼️ **Image Search** | Query image | Visually similar frames | SigLIP2 image embeddings |
-| 🔤 **OCR / ASR** | Frames + audio | Searchable text evidence | Tesseract + Faster Whisper |
+| 🔎 **Textual KIS** | Mô tả bằng ngôn ngữ tự nhiên | Danh sách `video_id`, `frame_id` đã xếp hạng | SigLIP2 + OCR + ASR + fusion |
+| 💬 **Video Q&A** | Câu hỏi về nội dung video | Frame bằng chứng + đường dẫn trả lời | Visual + OCR + ASR |
+| 🧭 **TRAKE** | Chuỗi sự kiện có thứ tự | Một video + các keyframe theo đúng thứ tự | Coarse retrieval + temporal refinement + DP alignment |
+| 🖼️ **Image Search** | Ảnh truy vấn | Các frame giống về mặt thị giác | SigLIP2 image embeddings |
+| 🔤 **OCR / ASR** | Frame + âm thanh | Bằng chứng văn bản có thể tìm kiếm | Tesseract + Faster Whisper |
 
-The retrieval layer supports Vietnamese and English query variants, evidence-aware reranking, temporal deduplication, and an optional local QueryRefiner with deterministic fallback.
+Lớp retrieval hỗ trợ truy vấn tiếng Việt và tiếng Anh, evidence-aware reranking, temporal deduplication và QueryRefiner local tùy chọn với deterministic fallback.
 
 ---
 
-## 🧠 Architecture at a glance
+## 🧠 Kiến trúc tổng quan
 
 ```text
                                ┌─────────────────────┐
@@ -77,26 +77,26 @@ The retrieval layer supports Vietnamese and English query variants, evidence-awa
                                                Ordered DP alignment
 ```
 
-### Frame identity is authoritative
+### Frame ID là định danh chuẩn
 
-A result `frame_id` is the **zero-based ordinal emitted by sequential PyAV decoding in display order**.
+`frame_id` trả về là **chỉ số zero-based theo thứ tự frame mà PyAV giải mã tuần tự ở display order**.
 
 ```python
 for frame_id, frame in enumerate(container.decode(stream)):
     ...
 ```
 
-The system does **not** reconstruct authoritative frame IDs using `timestamp × FPS`. This keeps ingestion, retrieval, evaluation, and temporal refinement aligned with the source video.
+Hệ thống **không** tái tạo frame ID chuẩn bằng `timestamp × FPS`. Điều này giúp ingestion, retrieval, evaluation và temporal refinement cùng dùng một hệ quy chiếu frame thống nhất.
 
 ---
 
-# 🚀 Quick Start with Docker
+# 🚀 Bắt đầu nhanh với Docker
 
-Docker is the recommended runtime on **Linux** and **Windows 10/11**.
+Docker là runtime được khuyến nghị trên **Linux** và **Windows 10/11**.
 
-The image contains the core Linux dependencies used by the application, including Python 3.12, FFmpeg, Tesseract, Git, GCC and G++.
+Image chứa các dependency Linux cốt lõi dùng bởi ứng dụng, gồm Python 3.12, FFmpeg, Tesseract, Git, GCC và G++.
 
-## Requirements
+## Yêu cầu
 
 ### Linux
 
@@ -106,21 +106,21 @@ The image contains the core Linux dependencies used by the application, includin
 ### Windows 10/11
 
 - Docker Desktop
-- WSL2 backend enabled
-- Git for Windows or Git inside WSL2
+- Bật WSL2 backend
+- Git for Windows hoặc Git bên trong WSL2
 
-For Windows, keeping videos, model caches, and processed artifacts inside the cloned repository is the simplest setup.
+Trên Windows, cách đơn giản nhất là giữ video, model cache và processed artifacts bên trong thư mục repository.
 
-## 1. Clone
+## 1. Clone repository
 
 ```bash
 git clone git@github.com:gianguyen14/multiv2.git
 cd multiv2
 ```
 
-> The repository is private, so configure GitHub SSH access on the machine first.
+> Repository đang private, vì vậy cần cấu hình SSH GitHub trước trên máy chạy.
 
-## 2. Create local storage
+## 2. Tạo thư mục dữ liệu local
 
 Linux / WSL2:
 
@@ -134,13 +134,13 @@ PowerShell:
 New-Item -ItemType Directory -Force data/test-videos, data/processed, models
 ```
 
-Put your source videos in:
+Đặt video nguồn tại:
 
 ```text
 data/test-videos/
 ```
 
-Default Docker mounts:
+Docker mount mặc định:
 
 ```text
 Host                       Container
@@ -150,74 +150,74 @@ Host                       Container
 ./models             -->   /models            read/write
 ```
 
-## 3. Build the image
+## 3. Build image
 
 ```bash
 docker compose build
 ```
 
-## 4. Check the runtime
+## 4. Kiểm tra runtime
 
 ```bash
 docker compose --profile tools run --rm worker env --check
 docker compose --profile tools run --rm worker doctor
 ```
 
-## 5. Prepare the models
+## 5. Chuẩn bị model
 
-Prepare the default visual + ASR models:
+Chuẩn bị model visual + ASR mặc định:
 
 ```bash
 docker compose --profile tools run --rm worker models --prepare
 ```
 
-Inspect model availability:
+Kiểm tra model hiện có:
 
 ```bash
 docker compose --profile tools run --rm worker models
 ```
 
-Optional local query-refiner model:
+QueryRefiner local là tùy chọn:
 
 ```bash
 docker compose --profile tools run --rm worker models --prepare --query-refiner
 ```
 
-If the QueryRefiner model is unavailable, search can use the deterministic fallback path.
+Nếu QueryRefiner chưa có model, search vẫn có thể dùng deterministic fallback.
 
-## 6. Preprocess / index videos
+## 6. Preprocess / index video
 
 ```bash
 docker compose --profile tools run --rm worker preprocess /data/videos
 ```
 
-This performs the configured ingestion pipeline and publishes searchable artifacts under the mounted processed directory. Preprocessing resumes compatible work when possible.
+Lệnh này chạy ingestion pipeline theo cấu hình và tạo searchable artifacts bên trong processed directory đã mount. Các phần việc tương thích có thể được resume.
 
-Check state afterward:
+Kiểm tra trạng thái:
 
 ```bash
 docker compose --profile tools run --rm worker status
 ```
 
-## 7. Start the application
+## 7. Khởi động ứng dụng
 
 ```bash
 docker compose up -d backend
 ```
 
-Check containers:
+Kiểm tra container:
 
 ```bash
 docker compose ps
 ```
 
-Follow logs:
+Theo dõi log:
 
 ```bash
 docker compose logs -f backend
 ```
 
-Open the web interface:
+Mở giao diện web:
 
 ```text
 http://127.0.0.1:8000
@@ -245,35 +245,33 @@ Invoke-WebRequest http://127.0.0.1:8000/health/ready
 
 ---
 
-# 🎮 How to use the system
+# 🎮 Cách sử dụng
 
-You can use the project in three ways:
+Có ba cách chính để dùng project:
 
-1. **Web UI** — easiest interactive workflow.
-2. **`projectctl.py` CLI** — best for development, experiments, batch work and validation.
-3. **FastAPI** — best for external applications and custom frontends.
+1. **Web UI** — phù hợp nhất cho thao tác tương tác.
+2. **`projectctl.py` CLI** — phù hợp cho development, experiment, batch và validation.
+3. **FastAPI** — phù hợp khi tích hợp với ứng dụng hoặc frontend khác.
 
-## Option A — Web UI
-
-Start the backend:
+## Cách A — Web UI
 
 ```bash
 docker compose up -d backend
 ```
 
-Then open:
+Sau đó mở:
 
 ```text
 http://127.0.0.1:8000
 ```
 
-The frontend is served directly by FastAPI, so no second frontend server is required for the normal Docker workflow.
+Frontend được FastAPI phục vụ trực tiếp nên workflow Docker thông thường không cần chạy thêm frontend server riêng.
 
 ---
 
-## Option B — CLI with `projectctl.py`
+## Cách B — CLI với `projectctl.py`
 
-Inside Docker, use the `worker` service:
+Trong Docker, dùng service `worker`:
 
 ```bash
 docker compose --profile tools run --rm worker --help
@@ -281,14 +279,14 @@ docker compose --profile tools run --rm worker --help
 
 ### 🔎 Textual KIS
 
-Find frames matching a description:
+Tìm frame phù hợp với mô tả:
 
 ```bash
 docker compose --profile tools run --rm worker \
   kis "một người phụ nữ mặc áo dài" --top-k 20
 ```
 
-Useful for queries such as:
+Ví dụ truy vấn:
 
 ```text
 "a red car crossing an intersection"
@@ -298,63 +296,63 @@ Useful for queries such as:
 
 ### 💬 Video Q&A
 
-Retrieve evidence for a question:
+Truy hồi bằng chứng cho câu hỏi:
 
 ```bash
 docker compose --profile tools run --rm worker \
   qa "Nhiệt độ hiển thị trên màn hình là bao nhiêu?" --top-k 20
 ```
 
-Q&A retrieval combines available visual, OCR and ASR evidence before downstream answer handling.
+Q&A kết hợp bằng chứng visual, OCR và ASR có sẵn trước khi xử lý bước trả lời tiếp theo.
 
 ### 🧭 TRAKE
 
-TRAKE searches for an **ordered event sequence inside the same video**.
+TRAKE tìm **chuỗi sự kiện có thứ tự trong cùng một video**.
 
-Pipe-separated syntax:
+Cú pháp phân tách bằng `|`:
 
 ```bash
 docker compose --profile tools run --rm worker \
   trake "người đứng yên | bắt đầu chạy | nhảy lên | tiếp đất" --top-k 30
 ```
 
-JSON syntax:
+Cú pháp JSON:
 
 ```bash
 docker compose --profile tools run --rm worker \
   trake '["đứng", "chạy đà", "nhảy", "tiếp đất"]' --top-k 30
 ```
 
-TRAKE can use dense temporal refinement around coarse candidate regions and then enforce monotonic event ordering.
+TRAKE có thể chạy dense temporal refinement quanh các vùng coarse candidate rồi ép thứ tự sự kiện theo chiều thời gian.
 
-Disable dense temporal refinement for diagnostics:
+Tắt dense temporal refinement để chẩn đoán:
 
 ```bash
 docker compose --profile tools run --rm worker \
   trake "event one | event two" --no-temporal-refine
 ```
 
-### 🖼️ Image-to-frame search
+### 🖼️ Tìm frame bằng ảnh
 
-If the query image is available inside the container:
+Nếu ảnh truy vấn có sẵn trong container:
 
 ```bash
 docker compose --profile tools run --rm worker \
   image-search /data/videos/query.jpg --top-k 20
 ```
 
-Or use the HTTP image endpoint from the host; see the API examples below.
+Hoặc dùng HTTP image endpoint từ host.
 
-### 🧠 Inspect the query plan
+### 🧠 Xem QueryPlan
 
 ```bash
 docker compose --profile tools run --rm worker \
   query-plan "biển số xe 79H-6072" --task kis --json
 ```
 
-This is useful for understanding query expansion, lexical terms, and the local QueryRefiner path.
+Lệnh này hữu ích để kiểm tra query expansion, lexical terms và đường chạy QueryRefiner local.
 
-### 🩺 Diagnostics
+### 🩺 Chẩn đoán
 
 ```bash
 docker compose --profile tools run --rm worker doctor
@@ -363,14 +361,14 @@ docker compose --profile tools run --rm worker info
 docker compose --profile tools run --rm worker smoke
 ```
 
-### 📦 Dataset validation
+### 📦 Kiểm tra dataset
 
 ```bash
 docker compose --profile tools run --rm worker \
   dataset verify /data/videos
 ```
 
-For the repository's representative validation workflow:
+Workflow validation đại diện trong repository:
 
 ```bash
 docker compose --profile tools run --rm worker validate-dataset
@@ -378,20 +376,18 @@ docker compose --profile tools run --rm worker validate-dataset
 
 ### 📊 Evaluation
 
-Competition-style internal evaluation:
-
 ```bash
 docker compose --profile tools run --rm worker \
   evaluate --competition --ground-truth /path/to/ground_truth
 ```
 
-The checked-in competition scorer is an **internal provisional metric**, not an official competition scoring claim.
+Competition scorer có trong repository là **internal provisional metric**, không phải tuyên bố về official competition scoring.
 
 ---
 
-## Option C — HTTP API
+## Cách C — HTTP API
 
-The active service exposes the retrieval API from `backend.app.main`.
+Service hiện tại expose retrieval API từ `backend.app.main`.
 
 ### KIS request
 
@@ -439,9 +435,9 @@ curl -X POST "http://127.0.0.1:8000/api/search/image?top_k=20" \
   -F "file=@query.jpg"
 ```
 
-Supported image formats are JPEG, PNG and WebP. The API limits image uploads to 15 MB.
+Các định dạng ảnh hỗ trợ: JPEG, PNG và WebP. API giới hạn upload ảnh ở 15 MB.
 
-### Debug the QueryPlan through the API
+### Debug QueryPlan qua API
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/search \
@@ -456,10 +452,10 @@ curl -X POST http://127.0.0.1:8000/api/search \
 
 ---
 
-# 🧩 Typical end-to-end workflow
+# 🧩 Workflow end-to-end điển hình
 
 ```text
-1. Put videos in data/test-videos/
+1. Đặt video vào data/test-videos/
            │
            ▼
 2. docker compose build
@@ -480,7 +476,7 @@ curl -X POST http://127.0.0.1:8000/api/search \
 7. docker compose up -d backend
            │
            ▼
-8. Open Web UI / run KIS / Q&A / TRAKE / image search
+8. Mở Web UI / chạy KIS / Q&A / TRAKE / image search
            │
            ▼
 9. evaluate / benchmark / tune
@@ -488,11 +484,11 @@ curl -X POST http://127.0.0.1:8000/api/search \
 
 ---
 
-# 🐳 Docker configuration
+# 🐳 Cấu hình Docker
 
-## Override data/model locations
+## Đổi vị trí data/model
 
-Compose supports:
+Compose hỗ trợ:
 
 ```text
 VIDEOS_DIR
@@ -502,7 +498,7 @@ HF_HUB_OFFLINE
 TRANSFORMERS_OFFLINE
 ```
 
-Example on Linux / WSL2:
+Ví dụ Linux / WSL2:
 
 ```bash
 VIDEOS_DIR=/mnt/videos \
@@ -511,11 +507,11 @@ MODELS_DIR=/mnt/aic-models \
 docker compose up -d backend
 ```
 
-For Windows, repository-relative paths are recommended unless Docker Desktop has access to the external drive/path.
+Trên Windows, nên ưu tiên path tương đối trong repository trừ khi Docker Desktop đã có quyền truy cập ổ đĩa/path bên ngoài.
 
-## Offline mode
+## Chế độ offline
 
-After required weights are already cached in the mounted model directory:
+Sau khi model weight cần thiết đã được cache vào thư mục model đã mount:
 
 Linux / WSL2:
 
@@ -531,19 +527,19 @@ $env:TRANSFORMERS_OFFLINE="1"
 docker compose up -d backend
 ```
 
-Verify offline model readiness:
+Kiểm tra model offline:
 
 ```bash
 docker compose --profile tools run --rm worker models --verify-offline
 ```
 
-## Stop / rebuild
+## Dừng / build lại
 
 ```bash
 docker compose down
 ```
 
-After source changes:
+Sau khi source thay đổi:
 
 ```bash
 docker compose up --build -d backend
@@ -553,7 +549,7 @@ docker compose up --build -d backend
 
 # ⚡ NVIDIA GPU / CUDA
 
-The repository includes a CUDA Compose override:
+Repository có CUDA Compose override:
 
 ```bash
 docker compose \
@@ -562,38 +558,38 @@ docker compose \
   up --build -d backend
 ```
 
-Host prerequisites:
+Yêu cầu host:
 
-- **Linux:** compatible NVIDIA driver and Docker GPU/container runtime support.
-- **Windows:** NVIDIA driver with WSL2 GPU support and Docker Desktop using the WSL2 backend.
+- **Linux:** NVIDIA driver tương thích và Docker GPU/container runtime.
+- **Windows:** NVIDIA driver hỗ trợ GPU trong WSL2 và Docker Desktop dùng WSL2 backend.
 
-Verify Docker GPU access before running the CUDA override.
+Nên xác nhận Docker nhìn thấy GPU trước khi chạy CUDA override.
 
-> ⚠️ **RC2 OCR note:** the CUDA override still contains experimental GPU OCR routing. PaddleOCR GPU is **not** part of the accepted RC2 runtime path yet. For RC2 reproducibility, use the Tesseract OCR path until CUDA/Paddle integration is validated separately.
-
----
-
-# 🔬 Retrieval design
-
-### Sparse globally, dense locally
-
-The permanent FAISS index stays sparse. For TRAKE, dense decoding/embedding happens only inside bounded temporal regions around promising coarse hits.
-
-### Evidence before cosmetics
-
-OCR and ASR evidence can promote candidates that visual similarity alone would miss, including text, numbers, signage and spoken details.
-
-### Deterministic ordering
-
-Fusion and reranking are designed to preserve stable ordering and deterministic tie-breaking wherever possible.
-
-### Fail-open optional intelligence
-
-Optional query-refinement components can fall back to deterministic parsing instead of making the whole retrieval path unavailable.
+> ⚠️ **Ghi chú OCR cho RC2:** CUDA override vẫn có routing OCR GPU ở mức thử nghiệm. PaddleOCR GPU **chưa** thuộc runtime RC2 đã được chấp nhận. Để tái lập RC2, dùng Tesseract OCR cho đến khi CUDA/Paddle được validate riêng.
 
 ---
 
-# 🛠️ Development without Docker
+# 🔬 Thiết kế retrieval
+
+### Sparse toàn cục, dense cục bộ
+
+FAISS index lưu lâu dài vẫn ở dạng sparse. Với TRAKE, dense decoding/embedding chỉ chạy trong vùng thời gian giới hạn quanh các coarse hit có triển vọng.
+
+### Ưu tiên bằng chứng
+
+OCR và ASR có thể nâng hạng candidate mà visual similarity bỏ sót, ví dụ chữ, số, biển báo và nội dung lời nói.
+
+### Thứ tự xác định được
+
+Fusion và reranking được thiết kế để giữ thứ tự ổn định và deterministic tie-breaking khi có thể.
+
+### Optional intelligence theo kiểu fail-open
+
+Các thành phần query refinement tùy chọn có thể rơi về deterministic parsing thay vì làm toàn bộ retrieval path bị gián đoạn.
+
+---
+
+# 🛠️ Phát triển không dùng Docker
 
 ```bash
 python -m pip install -e .
@@ -602,19 +598,19 @@ python projectctl.py doctor
 pytest
 ```
 
-Run the local server:
+Chạy local server:
 
 ```bash
 python projectctl.py dev
 ```
 
-Open:
+Mở:
 
 ```text
 http://127.0.0.1:8000
 ```
 
-Use the checked-out revision's help output as the authoritative CLI reference:
+Help của revision đang checkout là tham chiếu CLI chính xác nhất:
 
 ```bash
 python projectctl.py --help
@@ -622,19 +618,19 @@ python projectctl.py --help
 
 ---
 
-# 📁 Repository layout
+# 📁 Cấu trúc repository
 
 ```text
-backend/       active application and retrieval pipeline
-frontend/      FastAPI-served operator UI
-eval/          evaluation and benchmark utilities
-scripts/       diagnostics, validation, dataset and experiment helpers
-tests/         unit and integration tests
-docs/          architecture, deployment and engineering notes
-projectctl.py  operator CLI / project entry point
+backend/       ứng dụng chính và retrieval pipeline
+frontend/      operator UI được FastAPI phục vụ
+eval/          công cụ evaluation và benchmark
+scripts/       diagnostics, validation, dataset và experiment helpers
+tests/         unit test và integration test
+docs/          tài liệu kiến trúc, triển khai và engineering
+projectctl.py  operator CLI / entry point của project
 ```
 
-## Documentation
+## Tài liệu
 
 - [Project Control CLI](docs/projectctl.md)
 - [Architecture](ARCHITECTURE.md)
@@ -643,15 +639,15 @@ projectctl.py  operator CLI / project entry point
 
 ---
 
-# 🎯 Current status
+# 🎯 Trạng thái hiện tại
 
 **`1.1.0-rc2` prevalidation source**
 
-The release candidate is being validated against the target NVIDIA GPU environment before promotion. Performance claims should be based on representative competition data and recorded validation results.
+Release candidate đang được validate trên môi trường NVIDIA GPU mục tiêu trước khi promote. Các tuyên bố về hiệu năng nên dựa trên dữ liệu competition đại diện và kết quả validation đã được ghi lại.
 
 <div align="center">
 
-### Built for retrieval quality, temporal correctness and reproducible experimentation.
+### Xây dựng cho chất lượng retrieval, tính đúng theo thời gian và khả năng tái lập experiment.
 
 **KIS · Q&A · TRAKE · OCR · ASR · SigLIP2 · FAISS · FastAPI**
 
