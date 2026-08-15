@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, experiment/cpp-hotpath]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -37,30 +37,48 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
+            build-essential \
             ffmpeg \
             tesseract-ocr \
             tesseract-ocr-eng \
             tesseract-ocr-vie
 
-      - name: Install Python dependencies
+      - name: Install Python dependencies and native core
+        env:
+          UVR_NATIVE_STRICT_BUILD: '1'
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev]'
+
+      - name: Verify native C++ core
+        env:
+          UVR_NATIVE_CORE: 'cpp'
+        run: |
+          python - <<'PY'
+          from backend.app.native import native_status
+          status = native_status()
+          print(status)
+          assert status["available"] is True
+          assert status["backend"] == "cpp"
+          PY
 
       - name: Runtime dependency check
         run: python projectctl.py env --check
 
       - name: Offline smoke test
+        env:
+          UVR_NATIVE_CORE: 'cpp'
         run: python projectctl.py smoke
 
       - name: Current CPU test suite
         env:
           HF_HUB_OFFLINE: '1'
           TRANSFORMERS_OFFLINE: '1'
+          UVR_NATIVE_CORE: 'cpp'
         run: |
           # Historical milestone tests below import eval helpers that are not
           # present in the frozen repository. Keep them in source for history,
-          # but exclude them from the current RC2 CPU gate.
+          # but exclude them from the current CPU gate.
           #
           # The SigLIP tests listed below intentionally load real Hugging Face
           # model/config artifacts. The CPU CI gate is offline and has no model
@@ -87,11 +105,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build application image
-        run: docker build --pull --tag aic-retrieval:ci .
+        run: docker build --pull --tag unified-video-retrieval:cpp-ci .
 
-      - name: Verify image runtime imports
+      - name: Verify image runtime imports and native core
         run: |
           docker run --rm \
             --entrypoint python \
-            aic-retrieval:ci \
-            -c "import backend; import backend.app; import faiss; import av; print('container imports: OK')"
+            -e UVR_NATIVE_CORE=cpp \
+            unified-video-retrieval:cpp-ci \
+            -c "import backend; import backend.app; import faiss; import av; from backend.app.native import native_status; s=native_status(); assert s['available'] and s['backend']=='cpp', s; print('container imports/native core: OK', s)"
