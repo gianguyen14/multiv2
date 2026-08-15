@@ -71,21 +71,21 @@ This kernel is active on this branch when `UVR_NATIVE_CORE=auto` and the extensi
 
 ### Temporal score smoothing
 
-`backend.app.native.smooth_scores` implements the local pooling rule used by TemporalRefiner and returns a float32 NumPy view backed by native-produced bytes.
+`backend.app.services.temporal_refiner.TemporalRefiner` now dispatches local temporal pooling through `backend.app.native.smooth_scores` after the NumPy similarity matrix multiplication.
 
-The kernel is implemented and parity-tested. Wiring it into every refinement call should be promoted only after representative profiling confirms it is beneficial relative to NumPy on the target workload.
+The kernel is active on this branch and parity-tested against the previous Python/NumPy loop. The authoritative frame-ID path is unchanged.
 
 ### Temporal candidate-region merging
 
-`backend.app.native.merge_temporal_regions` implements bounded candidate-window construction, overlap merging, score-priority limiting and deterministic start-frame ordering.
+`TemporalRefiner.build_candidate_regions` now dispatches bounded window construction, overlap merging, score-priority limiting and deterministic start-frame ordering through `backend.app.native.merge_temporal_regions`.
 
-The kernel is implemented and parity-tested. It is available for incremental TemporalRefiner integration without changing frame-ID semantics.
+The kernel is active on this branch and parity-tested against the Python reference implementation.
 
 ### Temporal NMS
 
 `backend.app.native.temporal_nms_indices` preserves stable candidate order while suppressing same-video frames inside a configurable frame gap.
 
-The kernel is implemented and parity-tested. It is suitable for the repeated KIS/image-search deduplication path.
+The kernel is implemented and parity-tested. It remains opt-in at the facade level until the repeated KIS/image-search deduplication call sites are profiled and migrated without broadening this experiment's semantic diff.
 
 ## Benchmark
 
