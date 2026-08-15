@@ -1,12 +1,19 @@
-import io
-from typing import Optional
+"""[DEPRECATED / INACTIVE STACK]
+This module is a historical milestone prototype and is NOT part of the active runtime architecture.
+The authoritative production stack is:
+  - CLI: projectctl.py
+  - Service: backend.app.services.configured_search.ConfiguredSearch
+  - API: backend.app.main:create_app
+  - Index: backend.app.video.frame_index (CURRENT generation)
+"""
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from typing import Any, Optional
+
+
 from PIL import Image
 
 from backend.app.services.search_service import SearchService
 
-router = APIRouter()
 _search_service: Optional[SearchService] = None
 
 
@@ -15,27 +22,15 @@ def configure_search_service(service: SearchService) -> None:
     _search_service = service
 
 
-def _service() -> SearchService:
+def _get_search_service() -> SearchService:
     if _search_service is None:
-        raise HTTPException(status_code=503, detail="Search service is not configured")
+        raise RuntimeError("Search service is not configured")
     return _search_service
 
 
-@router.post("/search/image")
-async def search_image(
-    image: UploadFile = File(...),
-    top_k: int = Form(10),
-):
-    contents = await image.read()
-    try:
-        query_image = Image.open(io.BytesIO(contents)).convert("RGB")
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="Invalid image file") from exc
-    results = _service().search_images([query_image], top_k)
-    return {"results": results[0] if results else []}
+def search_text_endpoint(text: str, top_k: int) -> dict:
+    return {"results": _get_search_service().search_by_text(text, top_k)}
 
 
-@router.post("/search/text")
-async def search_text(text: str = Form(...), top_k: int = Form(10)):
-    results = _service().search_text([text], top_k)
-    return {"results": results[0] if results else []}
+def search_image_endpoint(image: Any, top_k: int) -> dict:
+    return {"results": _get_search_service().search_by_image(image, top_k)}

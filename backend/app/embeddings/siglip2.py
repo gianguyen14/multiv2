@@ -15,7 +15,22 @@ import torch.nn.functional as F
 from PIL import Image
 from transformers import AutoProcessor, SiglipModel
 
-from backend.app.core.config import SIGLIP_ENABLED
+from backend.app.core.config import SIGLIP2_MODEL, SIGLIP_ENABLED
+from backend.app.runtime.device_policy import resolve_device
+
+
+def resolve_siglip2_revision(model_name: str, cache_dir: Optional[Path] = None) -> str:
+    try:
+        from huggingface_hub import snapshot_download
+        from backend.app.model_cache import model_cache_dir
+        actual_cache = model_cache_dir("huggingface", cache_dir)
+        path = snapshot_download(repo_id=model_name, cache_dir=actual_cache, local_files_only=True)
+        p = Path(path)
+        if p.parent.name == "snapshots":
+            return p.name
+        return str(path)
+    except Exception:
+        return "default"
 
 
 class SigLIP2Encoder:
@@ -32,8 +47,7 @@ class SigLIP2Encoder:
     - Deterministic inference
     """
 
-    DEFAULT_MODEL_NAME = "google/siglip2-base-patch16-224"
-    DEFAULT_CACHE_DIR = Path.home() / ".cache" / "siglip2"
+    DEFAULT_MODEL_NAME = SIGLIP2_MODEL
 
     def __init__(
         self,
@@ -42,6 +56,8 @@ class SigLIP2Encoder:
         device: Optional[str] = None,
         dtype: Optional[torch.dtype] = None,
         force_download: bool = False,
+        local_files_only: bool = False,
+        revision: Optional[str] = None,
     ):
         """Initialize the SigLIP2 encoder.
 
@@ -55,23 +71,23 @@ class SigLIP2Encoder:
         if not SIGLIP_ENABLED:
             raise RuntimeError("SigLIP2 is disabled. Set SIGLIP_ENABLED=true in config.")
 
+        from backend.app.model_cache import model_cache_dir
         self.model_name = model_name
-        self.cache_dir = Path(cache_dir) if cache_dir else self.DEFAULT_CACHE_DIR
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_dir = model_cache_dir("huggingface", cache_dir)
+        if self.cache_dir:
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-        # Device detection
-        if device is None:
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        else:
-            self.device = device
+        self.device_selection = resolve_device("visual", "torch", device,
+            component_env="VISUAL_DEVICE")
+        self.device = self.device_selection.device
+        self.dtype = dtype or (torch.float16 if self.device.startswith("cuda") else torch.float32)
+        self.auto_batch_size = 16 if self.device.startswith("cuda") else 8
+        self.last_batch_size = None
+        self.revision = revision or resolve_siglip2_revision(self.model_name, self.cache_dir)
 
-        # Dtype selection
-        if dtype is None:
-            self.dtype = torch.float16 if self.device == "cuda" else torch.float32
-        else:
-            self.dtype = dtype
 
         self.force_download = force_download
+        self.local_files_only = local_files_only
         self._model: Optional[SiglipModel] = None
         self._processor: Optional[AutoProcessor] = None
         self._initialized = False
@@ -88,23 +104,29 @@ class SigLIP2Encoder:
         if self._initialized:
             return
 
-        # Load processor
-        self._processor = AutoProcessor.from_pretrained(
-            self.model_name,
-            cache_dir=str(self.cache_dir),
-            force_download=self.force_download,
-        )
-
-        # Load model
-        self._model = SiglipModel.from_pretrained(
-            self.model_name,
-            cache_dir=str(self.cache_dir),
-            force_download=self.force_download,
-            torch_dtype=self.dtype,
-            low_cpu_mem_usage=True,
-        ).to(self.device)
-
-        self._model.eval()
+        cache_dir = str(self.cache_dir) if self.cache_dir else None
+        try:
+            processor = AutoProcessor.from_pretrained(
+                self.model_name,
+                cache_dir=cache_dir,
+                force_download=self.force_download,
+                local_files_only=self.local_files_only,
+            )
+            model = SiglipModel.from_pretrained(
+                self.model_name,
+                cache_dir=cache_dir,
+                force_download=self.force_download,
+                local_files_only=self.local_files_only,
+                torch_dtype=self.dtype,
+                low_cpu_mem_usage=True,
+            ).to(self.device)
+            model.eval()
+        except Exception as exc:
+            if self.local_files_only:
+                raise RuntimeError(f"SigLIP2 model {self.model_name} is not available locally. Run: python projectctl.py models --prepare --visual") from exc
+            raise
+        self._processor = processor
+        self._model = model
         self._initialized = True
 
     @property
@@ -129,7 +151,7 @@ class SigLIP2Encoder:
     def encode_text(
         self,
         texts: Union[str, List[str]],
-        batch_size: int = 32,
+        batch_size: Optional[int] = None,
         normalize: bool = True,
     ) -> np.ndarray:
         """Encode text(s) into normalized embedding vectors.
@@ -146,6 +168,8 @@ class SigLIP2Encoder:
             texts = [texts]
 
         self._load_model()
+        batch_size = batch_size or self.auto_batch_size
+        self.last_batch_size = batch_size
 
         all_embeddings = []
 
@@ -184,7 +208,7 @@ class SigLIP2Encoder:
     def encode_image(
         self,
         images: Union[Image.Image, List[Image.Image], str, List[str], Path, List[Path]],
-        batch_size: int = 32,
+        batch_size: Optional[int] = None,
         normalize: bool = True,
     ) -> np.ndarray:
         """Encode image(s) into normalized embedding vectors.
@@ -197,42 +221,41 @@ class SigLIP2Encoder:
         Returns:
             numpy array of shape (n_images, embedding_dim) with float32 values.
         """
-        # Convert all inputs to PIL Images
         if not isinstance(images, list):
             images = [images]
 
-        pil_images = []
-        for img in images:
-            if isinstance(img, (str, Path)):
-                pil_images.append(Image.open(img).convert("RGB"))
-            elif isinstance(img, Image.Image):
-                pil_images.append(img.convert("RGB"))
-            else:
-                raise TypeError(f"Unsupported image type: {type(img)}")
-
         self._load_model()
+        automatic_batch = batch_size is None
+        batch_size = batch_size or self.auto_batch_size
+        self.last_batch_size = batch_size
 
         all_embeddings = []
-
-        for i in range(0, len(pil_images), batch_size):
-            batch = pil_images[i:i + batch_size]
-
-            # Process images
-            inputs = self.processor(
-                images=batch,
-                return_tensors="pt",
-                padding=True,
-            )
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}
-
-            with torch.no_grad():
-                image_outputs = self.model.get_image_features(**inputs)
-                # image_outputs is a BaseModelOutputWithPooling, get pooled_output
-                image_embeddings = image_outputs.pooler_output
-                # image_embeddings shape: (batch_size, hidden_size)
-
-            embeddings = image_embeddings.detach().cpu().to(torch.float32).numpy()
+        i = 0
+        while i < len(images):
+            batch = []
+            for image in images[i:i + batch_size]:
+                if isinstance(image, (str, Path)):
+                    with Image.open(image) as opened:
+                        batch.append(opened.convert("RGB"))
+                elif isinstance(image, Image.Image):
+                    batch.append(image.convert("RGB"))
+                else:
+                    raise TypeError(f"Unsupported image type: {type(image)}")
+            try:
+                inputs = self.processor(images=batch, return_tensors="pt", padding=True)
+                inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                with torch.inference_mode():
+                    image_embeddings = self.model.get_image_features(**inputs).pooler_output
+                embeddings = image_embeddings.detach().cpu().to(torch.float32).numpy()
+            except torch.cuda.OutOfMemoryError:
+                if not automatic_batch or not self.device.startswith("cuda") or batch_size == 1:
+                    raise
+                batch_size = max(1, batch_size // 2)
+                self.last_batch_size = batch_size
+                torch.cuda.empty_cache()
+                continue
             all_embeddings.append(embeddings)
+            i += len(batch)
 
         result = np.vstack(all_embeddings) if all_embeddings else np.zeros((0, self.embedding_dim), dtype=np.float32)
 
@@ -247,7 +270,7 @@ class SigLIP2Encoder:
         self,
         texts: List[str],
         images: List[Union[Image.Image, str, Path]],
-        batch_size: int = 32,
+        batch_size: Optional[int] = None,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Encode paired texts and images.
 
@@ -286,17 +309,33 @@ class SigLIP2Encoder:
         self._model = None
         self._processor = None
         self._initialized = False
-        if torch.cuda.is_available():
+        if self.device.startswith("cuda"):
             torch.cuda.empty_cache()
+
+    def identity(self) -> dict:
+        return {
+            "provider": "huggingface-transformers",
+            "model_name": self.model_name,
+            "revision": self.revision,
+            "embedding_dim": self.get_model_info()["embedding_dim"],
+            "normalization": "l2",
+            "contract_version": "m15.1-v1",
+        }
+
 
     def get_model_info(self) -> dict:
         """Get model information."""
         return {
             "model_name": self.model_name,
-            "embedding_dim": self.embedding_dim,
+            "embedding_dim": 768,
+            "requested_device": self.device_selection.requested,
             "device": self.device,
+            "device_source": self.device_selection.source,
+            "device_fallback": self.device_selection.fallback,
             "dtype": str(self.dtype),
-            "cache_dir": str(self.cache_dir),
+            "automatic_batch_size": self.auto_batch_size,
+            "last_batch_size": self.last_batch_size,
+            "cache_dir": str(self.cache_dir) if self.cache_dir else None,
             "initialized": self._initialized,
         }
 

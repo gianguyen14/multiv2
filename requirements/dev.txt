@@ -1,5 +1,7 @@
+-r base.txt
 pytest
 mypy
 black
 isort
 ruff
+httpx

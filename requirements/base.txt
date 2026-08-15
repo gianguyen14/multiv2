@@ -9,3 +9,9 @@ sentence-transformers
 rank-bm25
 underthesea
 faster-whisper
+av
+torch
+transformers
+huggingface-hub
+pytesseract
+

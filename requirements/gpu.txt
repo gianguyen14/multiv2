@@ -4,3 +4,6 @@ torch
 torchvision
 transformers
 accelerate
+paddlepaddle-gpu
+paddleocr
+

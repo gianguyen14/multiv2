@@ -1,0 +1,60 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.coverage
+htmlcov
+.cache
+.env
+.env.*
+!.env.example
+artifacts
+data/
+models
+validation/
+contact_sheets
+eval/
+docs/
+tests/
+*.log
+*.tmp
+*.tar
+*.tar.gz
+.claude
+# Exclude generated text outputs
+qa_output.txt
+trace_output.txt
+# Exclude AIC2024 nested repository (not needed in image)
+AIC2024/
+# Exclude all auxiliary scripts (not required at runtime)
+scripts/
+# ablation.py
+# audit_gt.py
+# build_gt*.py
+# build_m27*.py
+# create_m27*.py
+# debug_qa.py
+# eval_*.py
+# fusion_experiment.py
+# inspect_asr_ocr.py
+# m26_1_trace.py
+# make_contact_sheets.py
+# make_sparse_contacts.py
+# print_asr*.py
+# prove_frames.py
+# run_queries.py
+# sample_asr*.py
+# sample_text.py
+# subset_matrix.py
+# test_api*.py
+# test_fusion_v2.py
+# trace_fusion.py
+# trace_qa.py
+# validate_artifacts.py
+# validate_ocr.py
+# Ensure scripts directory is included in the build context
+!scripts/

@@ -1,0 +1,32 @@
+services:
+  backend:
+    environment:
+      - COMPUTE_DEVICE=cuda
+      - VISUAL_DEVICE=cuda
+      - ASR_DEVICE=cuda
+      - OCR_BACKEND=auto
+      - OCR_GPU_BACKEND=paddleocr
+      - OCR_CPU_BACKEND=tesseract
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  worker:
+    environment:
+      - COMPUTE_DEVICE=cuda
+      - VISUAL_DEVICE=cuda
+      - ASR_DEVICE=cuda
+      - OCR_BACKEND=auto
+      - OCR_GPU_BACKEND=paddleocr
+      - OCR_CPU_BACKEND=tesseract
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

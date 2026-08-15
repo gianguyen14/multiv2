@@ -7,6 +7,28 @@ name = "unified-aic-retrieval"
 version = "0.1.0"
 description = "Unified multimedia retrieval system for AIC 2026"
 requires-python = ">=3.10"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "numpy",
+    "pillow",
+    "opencv-python",
+    "faiss-cpu",
+    "sentence-transformers",
+    "rank-bm25",
+    "underthesea",
+    "faster-whisper",
+    "av",
+    "torch",
+    "transformers",
+    "huggingface-hub",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "mypy", "black", "isort", "ruff", "httpx"]
+easyocr = ["easyocr"]
+playwright = ["playwright"]
 
 [tool.setuptools.packages.find]
 include = ["backend*"]

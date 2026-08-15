@@ -28,10 +28,10 @@ def test_image_and_text_retrieval_pipeline():
     encoder = FakeSigLIP2Encoder(vectors)
     retriever = SigLIPFaissRetriever(index, encoder)
 
-    image_results = retriever.search_by_image(
+    image_results = retriever.retrieve_images(
         [Image.new("RGB", (2, 2)), Image.new("RGB", (2, 2))], 2
     )
-    text_results = retriever.search_by_text(["first", "second"], 2)
+    text_results = retriever.retrieve_texts(["first", "second"], 2)
 
     assert len(image_results) == 2
     assert len(text_results) == 2
@@ -49,7 +49,7 @@ def test_retrieval_edge_cases():
     encoder = FakeSigLIP2Encoder(np.eye(4, dtype=np.float32))
     retriever = SigLIPFaissRetriever(index, encoder)
 
-    assert retriever.search_by_image([], 3) == []
-    assert retriever.search_by_text([], 3) == []
-    assert retriever.search_by_image([Image.new("RGB", (1, 1))], 0) == [[]]
-    assert retriever.search_by_text(["query"], -1) == [[]]
+    assert retriever.retrieve_images([], 3) == []
+    assert retriever.retrieve_texts([], 3) == []
+    assert retriever.retrieve_images([Image.new("RGB", (1, 1))], 0) == [[]]
+    assert retriever.retrieve_texts(["query"], -1) == [[]]

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AIC Retrieval Console</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0b1118;--panel:#131d28;--line:#293747;--text:#eef4fa;--muted:#94a8bb;--accent:#2dd4bf}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px ui-monospace,SFMono-Regular,Menlo,monospace}header,main{max-width:1400px;margin:auto;padding:20px}header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)}h1{font-size:20px;margin:0}form{display:grid;grid-template-columns:160px 1fr auto;gap:10px;margin:20px 0}select,input,button,textarea{background:var(--panel);color:var(--text);border:1px solid var(--line);padding:11px;border-radius:6px;font:inherit}button{cursor:pointer;border-color:var(--accent)}button:hover{background:#18313a}.events{display:none;grid-column:1/-1;min-height:70px}.image-upload{display:none;grid-column:2;padding:8px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}.card img{width:100%;aspect-ratio:16/10;object-fit:cover;background:#080c11}.meta{padding:12px}.meta strong{color:var(--accent)}.scores{color:var(--muted);font-size:12px;margin-top:8px}.empty{color:var(--muted);padding:40px;text-align:center;border:1px dashed var(--line)}@media(max-width:700px){form{grid-template-columns:1fr}header{align-items:flex-start;gap:10px;flex-direction:column}}
+  </style>
+</head>
+<body>
+<header><h1>AIC 2026 Retrieval Console</h1><span id="status">ready</span></header>
+<main>
+  <form id="search-form">
+    <select id="query-type">
+      <option value="kis">Textual KIS</option>
+      <option value="qa">Video Q&amp;A</option>
+      <option value="trake">TRAKE</option>
+      <option value="image">Image Search</option>
+    </select>
+    <input id="query" autofocus placeholder="Describe an event or ask a question" required>
+    <input type="file" id="image-file" class="image-upload" accept="image/jpeg,image/png,image/webp">
+    <button id="submit-btn">Search</button>
+    <textarea class="events" id="events" placeholder="One TRAKE event per line"></textarea>
+  </form>
+  <section id="results" class="empty">Run a query to inspect ranked evidence.</section>
+</main>
+<script>
+const form=document.querySelector('#search-form'),type=document.querySelector('#query-type'),queryInput=document.querySelector('#query'),imageFile=document.querySelector('#image-file'),results=document.querySelector('#results'),status=document.querySelector('#status'),events=document.querySelector('#events');
+type.onchange=()=>{
+  events.style.display=type.value==='trake'?'block':'none';
+  if(type.value==='image'){
+    queryInput.style.display='none';
+    queryInput.removeAttribute('required');
+    imageFile.style.display='block';
+    imageFile.setAttribute('required','');
+  }else{
+    queryInput.style.display='block';
+    queryInput.setAttribute('required','');
+    imageFile.style.display='none';
+    imageFile.removeAttribute('required');
+  }
+};
+form.onsubmit=async event=>{
+  event.preventDefault();
+  status.textContent='searching';
+  results.className='empty';
+  results.textContent='Searching…';
+  try{
+    let response;
+    if(type.value==='image'){
+      const file=imageFile.files[0];
+      if(!file)throw new Error('Please select an image file');
+      const formData=new FormData();
+      formData.append('file',file);
+      response=await fetch('/api/search/image?top_k=100',{method:'POST',body:formData});
+    }else{
+      const body={query:queryInput.value,query_type:type.value,events:events.value.split('\n').filter(Boolean)};
+      response=await fetch('/api/search',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    }
+    if(!response.ok)throw new Error(await response.text());
+    const data=await response.json();
+    render(data.results||[]);
+    status.textContent=`${(data.results||[]).length} results`;
+  }catch(error){
+    results.textContent=error.message;
+    status.textContent='error';
+  }
+};
+function node(tag,className,text){
+  const value=document.createElement(tag);
+  if(className)value.className=className;
+  if(text!==undefined)value.textContent=String(text);
+  return value;
+}
+function fixed(value,digits){
+  const number=Number(value);
+  return (Number.isFinite(number)?number:0).toFixed(digits);
+}
+function render(items){
+  if(!items.length){results.className='empty';results.textContent='No candidates';return}
+  results.className='grid';
+  const cards=items.map((item,index)=>{
+    const card=node('article','card');
+    const image=node('img');
+    image.src=String(item.image_url||'');
+    image.alt='Candidate frame';
+    const meta=node('div','meta');
+    meta.append(node('strong','',`#${index+1} ${item.video_id??''}`));
+    meta.append(node('div','',`frame ${item.frame_id??''}`));
+    meta.append(node('div','',`${item.timestamp_seconds??'unknown'} s`));
+    meta.append(node('div','scores',`score ${fixed(item.score,4)} · V ${fixed(item.visual_score,3)} · OCR ${fixed(item.ocr_score,3)} · ASR ${fixed(item.asr_score,3)}`));
+    if(item.answer)meta.append(node('div','',`answer: ${item.answer}`));
+    if(item.evidence_sources?.length)meta.append(node('div','scores',`evidence: ${item.evidence_sources.join(', ')}`));
+    const copy=node('button','', 'Copy submission');
+    copy.type='button';
+    copy.addEventListener('click',()=>{
+      const submission=`${item.video_id??''},${item.frame_id??''}${item.answer?','+item.answer:''}`;
+      navigator.clipboard.writeText(submission);
+    });
+    meta.append(copy);
+    card.append(image,meta);
+    return card;
+  });
+  results.replaceChildren(...cards);
+}
+document.onkeydown=event=>{if(event.key==='/'&&!event.ctrlKey&&type.value!=='image'){event.preventDefault();queryInput.focus()}if(event.key==='Enter'&&event.ctrlKey)form.requestSubmit()};
+</script>
+</body>
+</html>

@@ -14,7 +14,9 @@ except ImportError:
     TRANSFORMERS_AVAILABLE = False
 
 
-@pytest.mark.skipif(not TRANSFORMERS_AVAILABLE, reason="transformers/torch not available")
+@pytest.mark.real_model
+@pytest.mark.slow
+@pytest.mark.skipif(not TRANSFORMERS_AVAILABLE or __import__("os").environ.get("RUN_SIGLIP_REAL_MODEL") != "1", reason="set RUN_SIGLIP_REAL_MODEL=1")
 class TestSigLIP2Integration:
     """Integration tests with real model loading."""
 

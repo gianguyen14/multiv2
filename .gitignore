@@ -3,6 +3,9 @@
 *.py[cod]
 *.egg-info/
 .pytest_cache/
+.coverage
+htmlcov/
+coverage/
 .mypy_cache/
 .ruff_cache/
 .venv/
@@ -11,6 +14,14 @@ venv/
 # IDE
 .vscode/
 .idea/
+*~
+*.swp
+*.swo
+
+# Frontend generated output
+node_modules/
+frontend/dist/
+frontend/coverage/
 
 # Runtime data
 
@@ -18,6 +29,9 @@ data/raw/*
 data/processed/*
 data/indexes/*
 data/logs/*
+
+# Local validation staging (symlinks to source videos)
+data/validation-3videos/
 
 !data/raw/videos/.gitkeep
 !data/processed/.gitkeep
@@ -31,6 +45,14 @@ models/
 *.pth
 *.onnx
 
+# Evaluation outputs and contact sheets
+contact_sheets/
+eval/results/
+*.log
+
 # OS
 .DS_Store
 Thumbs.db
+
+/qa_output.txt
+/trace_output.txt
