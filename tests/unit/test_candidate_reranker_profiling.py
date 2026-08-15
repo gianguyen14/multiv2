@@ -1,6 +1,4 @@
-import copy
 import logging
-import pytest
 from copy import deepcopy
 
 from backend.app.services.candidate_reranker import CandidateReranker
@@ -79,32 +77,41 @@ def test_candidate_reranker_profiling(monkeypatch, caplog):
     ocr = _ocr_evidence()
     asr = _asr_evidence()
 
-    # Non‑profile run
+    # Profiling is intentionally emitted at INFO; capture that logger explicitly
+    # instead of raising its production log level.
+    caplog.set_level(logging.INFO, logger="backend.app.services.candidate_reranker")
+
     monkeypatch.delenv("RERANKER_PROFILE", raising=False)
     caplog.clear()
     result_no_profile = reranker.rerank(
         deepcopy(base_candidates), deepcopy(plan), deepcopy(ocr), deepcopy(asr)
     )
-    # Ensure no profiling record
-    profile_records = [rec for rec in caplog.records if rec.getMessage() == "candidate_reranker_profile"]
+    profile_records = [
+        rec for rec in caplog.records if rec.getMessage() == "candidate_reranker_profile"
+    ]
     assert len(profile_records) == 0, "Profiling should be disabled"
 
-    # Profile run
     monkeypatch.setenv("RERANKER_PROFILE", "1")
     caplog.clear()
     result_profile = reranker.rerank(
         deepcopy(base_candidates), deepcopy(plan), deepcopy(ocr), deepcopy(asr)
     )
-    # Ensure profiling record exists and has required attributes
-    profile_records = [rec for rec in caplog.records if rec.getMessage() == "candidate_reranker_profile"]
+    profile_records = [
+        rec for rec in caplog.records if rec.getMessage() == "candidate_reranker_profile"
+    ]
     assert len(profile_records) == 1, "Profiling should emit exactly one log record"
     rec = profile_records[0]
-    for attr in ["candidate_count", "exact_term_count", "ocr_evidence_count", "asr_evidence_count", "duration_ms"]:
+    for attr in [
+        "candidate_count",
+        "exact_term_count",
+        "ocr_evidence_count",
+        "asr_evidence_count",
+        "duration_ms",
+    ]:
         assert hasattr(rec, attr), f"LogRecord missing expected attribute {attr}"
     assert rec.candidate_count == len(base_candidates)
     assert rec.exact_term_count == len([ex for ex in plan.exact_strings if ex.strip()])
     assert rec.ocr_evidence_count == len(ocr)
     assert rec.asr_evidence_count == len(asr)
 
-    # Results should be identical regardless of profiling
     assert result_no_profile == result_profile
