@@ -1,0 +1,4 @@
+{"query_id":"q_kis_1","category_id":"C02","task_type":"kis","query":"synthetic KIS target","ground_truth":{"video_id":"V001","exact_frame_id":105,"valid_frame_intervals":[[100,110]]}}
+{"query_id":"q_qa_1","category_id":"C16","task_type":"qa","query":"synthetic QA target","ground_truth":{"answerable":true,"video_id":"V002","exact_frame_id":210,"valid_frame_intervals":[[205,215]],"accepted_answers":["40 độ c","40 °c"]}}
+{"query_id":"q_qa_negative","category_id":"C18","task_type":"qa","query":"synthetic unanswerable target","ground_truth":{"answerable":false,"accepted_answers":[]}}
+{"query_id":"q_trake_1","category_id":"C13","task_type":"trake","events":["event one","event two","event three"],"ground_truth":{"video_id":"V003","event_intervals":[[10,20],[30,40],[50,60]],"exact_event_frames":[15,35,55]}}
