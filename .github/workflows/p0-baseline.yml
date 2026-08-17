@@ -10,7 +10,7 @@ on:
       - '.github/workflows/p0-baseline.yml'
   push:
     branches:
-      - 'eval/p0-ground-truth-baseline'
+      - 'eval/p0-ground-truth-baseline-v2'
     paths:
       - 'evaluation/**'
       - 'tests/unit/test_p0_baseline_evaluator.py'
@@ -20,7 +20,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 concurrency:
   group: p0-baseline-${{ github.workflow }}-${{ github.ref }}
@@ -80,30 +79,13 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Publish PASS proof on pull request
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const marker = '<!-- p0-baseline-ci -->';
-            const body = [
-              marker,
-              'P0 baseline evaluator CI: **PASS**',
-              `Commit: \`${context.sha}\``,
-              '- Python 3.12 evaluator + runner unit tests: PASS',
-              '- synthetic evaluator smoke: PASS',
-              '- uploaded artifact: `p0-baseline-synthetic-smoke`',
-              '- measurement scope: `SYNTHETIC_CI_SMOKE` (not real retrieval quality)'
-            ].join('\n');
-            const { owner, repo } = context.repo;
-            const issue_number = context.issue.number;
-            const comments = await github.paginate(
-              github.rest.issues.listComments,
-              { owner, repo, issue_number, per_page: 100 }
-            );
-            const prior = comments.find(c => c.body && c.body.includes(marker));
-            if (prior) {
-              await github.rest.issues.updateComment({ owner, repo, comment_id: prior.id, body });
-            } else {
-              await github.rest.issues.createComment({ owner, repo, issue_number, body });
-            }
+      - name: Write verification summary
+        if: always()
+        run: |
+          {
+            echo '## P0 baseline evaluator'
+            echo
+            echo '- Python 3.12 evaluator + runner unit-test gate executed.'
+            echo '- Synthetic smoke scope: `SYNTHETIC_CI_SMOKE` only.'
+            echo '- Real retrieval quality is not measured by this workflow.'
+          } >> "$GITHUB_STEP_SUMMARY"
