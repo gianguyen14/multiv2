@@ -1,0 +1,136 @@
+name: P0 Baseline Evaluator
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'eval/p0_baseline.py'
+      - 'eval/p0_run_current.py'
+      - 'eval/p0_ground_truth.example.jsonl'
+      - 'tests/unit/test_p0_baseline.py'
+      - '.github/workflows/p0-baseline.yml'
+  push:
+    branches:
+      - 'chatgpt/p0-baseline-ci'
+    paths:
+      - 'eval/p0_baseline.py'
+      - 'eval/p0_run_current.py'
+      - 'eval/p0_ground_truth.example.jsonl'
+      - 'tests/unit/test_p0_baseline.py'
+      - '.github/workflows/p0-baseline.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: p0-baseline-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evaluator:
+    name: Python 3.12 evaluator correctness
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install evaluator test dependency
+        run: python -m pip install pytest
+
+      - name: Compile evaluator and runner
+        run: python -m compileall -q eval/p0_baseline.py eval/p0_run_current.py
+
+      - name: Run focused evaluator tests
+        run: pytest -q tests/unit/test_p0_baseline.py
+
+      - name: Create synthetic prediction fixture
+        run: |
+          mkdir -p artifacts
+          cat > /tmp/p0_smoke_predictions.jsonl <<'EOF'
+          {"query_id":"GT_C01_EXAMPLE","task_type":"kis","latency_ms":10.0,"results":[{"video_id":"WRONG","frame_id":1},{"video_id":"EXAMPLE_V001","frame_id":121}]}
+          {"query_id":"GT_C18_EXAMPLE","task_type":"kis","latency_ms":20.0,"results":[]}
+          {"query_id":"GT_C16_EXAMPLE","task_type":"qa","latency_ms":30.0,"results":[{"video_id":"EXAMPLE_V002","frame_id":211,"answer":"Example Answer"}]}
+          {"query_id":"GT_C13_EXAMPLE","task_type":"trake","latency_ms":40.0,"results":[{"video_id":"EXAMPLE_V003","frame_ids":[100,300,500]}]}
+          EOF
+
+      - name: Run synthetic P0 smoke evaluation
+        run: |
+          python eval/p0_baseline.py \
+            --ground-truth eval/p0_ground_truth.example.jsonl \
+            --predictions /tmp/p0_smoke_predictions.jsonl \
+            --output-json artifacts/p0_smoke_results.json \
+            --output-md artifacts/p0_smoke_results.md \
+            --scope SYNTHETIC_CI_SMOKE \
+            --generation-id SYNTHETIC \
+            --runtime-label github-actions-python3.12
+
+      - name: Verify synthetic smoke invariants
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('artifacts/p0_smoke_results.json').read_text(encoding='utf-8'))
+          assert report['measurement_scope'] == 'SYNTHETIC_CI_SMOKE'
+
+          kis = report['kis']['aggregate']
+          assert kis['positive_queries'] == 1
+          assert kis['negative_queries'] == 1
+          assert kis['fir@1'] == 0.0
+          assert kis['fir@5'] == 1.0
+          assert kis['mrr_positive'] == 0.5
+          assert kis['negative_abstention_rate'] == 1.0
+
+          qa = report['qa']['aggregate']
+          assert qa['efr@1'] == 1.0
+          assert qa['internal_exact_match_accuracy_answerable'] == 1.0
+          assert qa['official_qa_scoring_semantics'] == 'UNRESOLVED'
+
+          trake = report['trake']['aggregate']
+          assert trake['complete_sequence_accuracy'] == 1.0
+          assert trake['valid_monotonic_sequence_rate'] == 1.0
+
+          assert report['notes']['performance_thresholds'] == 'TO_BE_ESTABLISHED_FROM_BASELINE'
+          print('P0 synthetic smoke invariants: OK')
+          PY
+
+      - name: Upload synthetic evaluator artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: p0-baseline-synthetic-smoke
+          path: |
+            artifacts/p0_smoke_results.json
+            artifacts/p0_smoke_results.md
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish evaluator status
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: actions/github-script@v7
+        env:
+          TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          JOB_RESULT: ${{ job.status }}
+        with:
+          script: |
+            const state = process.env.JOB_RESULT === 'success' ? 'success' : 'failure';
+            const description = state === 'success'
+              ? 'P0 evaluator tests and synthetic smoke passed'
+              : 'P0 evaluator Actions gate failed';
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: process.env.TARGET_SHA,
+              state,
+              context: 'p0-baseline/evaluator',
+              description,
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
