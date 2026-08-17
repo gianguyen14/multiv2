@@ -1,9 +1,0 @@
-{
-  "source_sha": "3494d1277e781294f57539d69873664ed8223d28",
-  "workflow": "P0 Baseline Evaluator",
-  "run_id": 32040419303,
-  "run_attempt": "1",
-  "result": "PASS",
-  "measurement_scope": "SYNTHETIC_CI_SMOKE",
-  "note": "This proves evaluator correctness only; it is not a real retrieval-quality baseline."
-}
