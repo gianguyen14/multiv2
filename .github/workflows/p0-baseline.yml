@@ -1,0 +1,78 @@
+name: P0 Baseline Evaluator
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'evaluation/**'
+      - 'tests/unit/test_p0_baseline_evaluator.py'
+      - '.github/workflows/p0-baseline.yml'
+  push:
+    branches:
+      - 'eval/p0-ground-truth-baseline'
+    paths:
+      - 'evaluation/**'
+      - 'tests/unit/test_p0_baseline_evaluator.py'
+      - '.github/workflows/p0-baseline.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p0-baseline-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evaluator:
+    name: Python 3.12 evaluator correctness
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Compile evaluator
+        run: python -m compileall -q evaluation/p0_baseline.py
+
+      - name: Run evaluator unit tests
+        run: python -m unittest tests.unit.test_p0_baseline_evaluator -v
+
+      - name: Run synthetic P0 smoke evaluation
+        run: |
+          mkdir -p artifacts
+          python evaluation/p0_baseline.py \
+            --ground-truth evaluation/fixtures/p0_smoke_gt.jsonl \
+            --predictions evaluation/fixtures/p0_smoke_predictions.jsonl \
+            --output artifacts/p0_smoke_results.json \
+            --scope SYNTHETIC_CI_SMOKE
+
+      - name: Verify smoke artifact scope and invariants
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('artifacts/p0_smoke_results.json').read_text(encoding='utf-8'))
+          assert report['measurement_scope'] == 'SYNTHETIC_CI_SMOKE'
+          assert report['metrics']['kis']['FIR@1'] == 0.0
+          assert report['metrics']['kis']['FIR@5'] == 1.0
+          assert report['metrics']['qa']['official_qa_scoring_semantics'] == 'UNRESOLVED'
+          assert report['metrics']['trake']['complete_sequence_accuracy'] == 1.0
+          assert report['notes']['performance_thresholds'] == 'TO_BE_ESTABLISHED_FROM_BASELINE'
+          print('P0 evaluator smoke invariants: OK')
+          PY
+
+      - name: Upload synthetic evaluator artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: p0-baseline-synthetic-smoke
+          path: artifacts/p0_smoke_results.json
+          if-no-files-found: error
+          retention-days: 14
