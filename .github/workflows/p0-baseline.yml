@@ -115,6 +115,7 @@ jobs:
 
       - name: Publish evaluator status
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        continue-on-error: true
         uses: actions/github-script@v7
         env:
           TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -137,6 +138,7 @@ jobs:
 
       - name: Persist observable PASS proof for branch push
         if: success() && github.event_name == 'push'
+        continue-on-error: true
         uses: actions/github-script@v7
         env:
           SOURCE_SHA: ${{ github.sha }}
