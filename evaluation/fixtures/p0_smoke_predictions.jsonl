@@ -1,0 +1,4 @@
+{"query_id":"q_kis_1","task_type":"kis","latency_ms":10.0,"results":[{"video_id":"V999","frame_id":1},{"video_id":"V001","frame_id":108}]}
+{"query_id":"q_qa_1","task_type":"qa","latency_ms":20.0,"result":{"video_id":"V002","frame_id":209,"answer":"40 độ C"}}
+{"query_id":"q_qa_negative","task_type":"qa","latency_ms":30.0,"result":{"answer":""}}
+{"query_id":"q_trake_1","task_type":"trake","latency_ms":40.0,"result":{"video_id":"V003","frames":[15,36,55]}}
