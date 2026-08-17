@@ -1,0 +1,274 @@
+{
+  "provenance": {
+    "audit_date": "2026-08-17",
+    "current_system": {
+      "repository": "gianguyen14/multiv2",
+      "audited_main_sha": "2e2a9ceecbaed197de4f63b1c22856cc219fb1ae"
+    },
+    "historical_systems": {
+      "AIC2024": "33e49a0a3fb13a5bfd3c83f784d86ba4dd3e0e16",
+      "AIC2025": "66c60ea8cc2bd0ec51a37ce7db60096578a23e6a",
+      "Panel2026": "4db2f8c92b2f4ac3c025cf311ef5638dd3f908c6"
+    },
+    "training_video": {
+      "status": "ANALYZED_AS_VIDEO_EVIDENCE",
+      "implementation_evidence": false
+    }
+  },
+  "evidence_policy": {
+    "labels": [
+      "PROVEN_FROM_CODE",
+      "PROVEN_FROM_CONFIG",
+      "PROVEN_FROM_ARTIFACT",
+      "PROVEN_FROM_RUNTIME",
+      "VIDEO_EVIDENCE",
+      "DOCUMENTED_ONLY",
+      "INFERRED",
+      "HYPOTHESIS",
+      "UNRESOLVED"
+    ],
+    "architecture_is_not_quality": true,
+    "unknown_gain": "TO_BE_MEASURED"
+  },
+  "current_system": {
+    "visual_model": "google/siglip2-base-patch16-224",
+    "embedding_dim": 768,
+    "vector_index": "FAISS IndexFlatIP",
+    "frame_id": {
+      "authoritative_semantics": "zero-based ordinal assigned as PyAV emits frames in display order",
+      "evidence": "backend/app/video/video_decoder.py::iter_frames",
+      "fps_reconstruction_avoided": true,
+      "end_to_end_frame_parity": "REQUIRES_RUNTIME_GATE"
+    },
+    "sampling": {
+      "active_audited_mode": "timestamp-interval",
+      "default_interval_seconds": 1.0
+    },
+    "gpu_video_decoding_status": "NOT_IMPLEMENTED_IN_AUDITED_MAIN",
+    "offline_status": {
+      "configuration": "CONFIGURED_FOR_LOCAL_OFFLINE_LOADING",
+      "runtime_verification": "NOT_ESTABLISHED_BY_THIS_AUDIT"
+    },
+    "automated_ci": {
+      "status": "PRESENT",
+      "exact_test_count": "UNRESOLVED_IN_THIS_EVALUATION_BASELINE"
+    },
+    "search_architecture": {
+      "query_refiner": "IMPLEMENTED_ACTIVE",
+      "visual": "IMPLEMENTED_ACTIVE",
+      "ocr": "IMPLEMENTED_ACTIVE",
+      "asr": "IMPLEMENTED_ACTIVE",
+      "rrf": "IMPLEMENTED_ACTIVE",
+      "candidate_reranker": "DETERMINISTIC_RULE_TOKEN_STRING_BASED",
+      "temporal_nms": {
+        "status": "IMPLEMENTED_ACTIVE",
+        "suppression_window_frames": 60,
+        "fixed_seconds_invariant": false
+      }
+    },
+    "qa": "IMPLEMENTED_ACTIVE_EVIDENCE_FIRST",
+    "trake": {
+      "status": "IMPLEMENTED_ACTIVE",
+      "temporal_refiner": "ACTIVE",
+      "aligner": "MONOTONIC_DP",
+      "active_default_transition_penalty": 0.0,
+      "active_default_max_gap": null
+    },
+    "kis_dense_refinement": {
+      "component": "backend/app/retrieval/kis_pipeline.py::DenseTemporalRefiner",
+      "status": "TEST_ONLY_UNWIRED",
+      "current_structural_cost": "per-candidate decode_frame_indices invokes sequential decode from frame zero to furthest local target",
+      "quality_gain": "TO_BE_MEASURED",
+      "latency_impact": "TO_BE_MEASURED"
+    }
+  },
+  "architectural_comparison": {
+    "frame_id": {
+      "AIC2024": "RISKY",
+      "AIC2025": "ACCEPTABLE_WITH_MAPPING_RISK",
+      "Panel2026": "RISKY_PROTOTYPE",
+      "CurrentSystem": "ROBUST_ARCHITECTURAL_DESIGN"
+    },
+    "textual_kis": {
+      "most_complete_audited_active_architecture": "CurrentSystem",
+      "comparative_quality": "TO_BE_MEASURED"
+    },
+    "ocr": {
+      "most_complete_audited_active_architecture": "CurrentSystem",
+      "comparative_quality": "TO_BE_MEASURED"
+    },
+    "asr": {
+      "AIC2025": "IMPLEMENTED_ACTIVE",
+      "CurrentSystem": "IMPLEMENTED_ACTIVE",
+      "comparative_quality": "TO_BE_MEASURED"
+    },
+    "qa": {
+      "only_complete_active_evidence_first_pipeline_in_audited_set": "CurrentSystem",
+      "comparative_quality": "TO_BE_MEASURED",
+      "official_scoring_semantics": "UNRESOLVED_FROM_CURRENT_VIDEO_EVIDENCE"
+    },
+    "trake": {
+      "most_complete_audited_architecture": "CurrentSystem",
+      "comparative_quality": "TO_BE_MEASURED"
+    },
+    "operator_workflow": {
+      "richest_audited_interaction_pattern": "Panel2026",
+      "current_missing": [
+        "arrow-key grid navigation",
+        "timeline/neighbor strip",
+        "video player/seek",
+        "frame stepping",
+        "result-card more-like-this workflow"
+      ]
+    }
+  },
+  "historical_experiments": [
+    {
+      "feature": "Timeline/neighbor strip",
+      "source": "Panel2026",
+      "recommendation": "ADOPT_AS_EXPERIMENT",
+      "expected_gain": "TO_BE_MEASURED",
+      "priority": "P1-A"
+    },
+    {
+      "feature": "DINOv3 sidecar instance index",
+      "source": "AIC2025",
+      "recommendation": "EXPERIMENT",
+      "expected_gain": "TO_BE_MEASURED",
+      "priority": "P2"
+    },
+    {
+      "feature": "TransNetV2 scene sampling",
+      "source": "AIC2025",
+      "recommendation": "EXPERIMENT",
+      "index_cardinality_gain": "TO_BE_MEASURED",
+      "retrieval_quality_change": "TO_BE_MEASURED",
+      "priority": "P2"
+    },
+    {
+      "feature": "Sparse frame access strategy",
+      "candidates": [
+        "sequential PyAV reference",
+        "grouped sequential decode",
+        "cache/predecoded lookup",
+        "GOP-aware bounded-seek prototype",
+        "optional GPU-assisted decode"
+      ],
+      "recommendation": "BENCHMARK_NO_WINNER_SELECTED",
+      "cache_vs_seek": "TO_BE_MEASURED_BY_WORKLOAD",
+      "priority": "P1-B"
+    }
+  ],
+  "not_recommended_for_current_roadmap": [
+    {
+      "feature": "Additional Milvus/Qdrant vector backend",
+      "reason": "no demonstrated requirement; adds operational surface area",
+      "comparative_backend_performance": "NOT_BENCHMARKED"
+    },
+    {
+      "feature": "MongoDB spatial engine",
+      "reason": "no validated target-task requirement"
+    },
+    {
+      "feature": "WordNet query expansion",
+      "reason": "semantic/query drift risk",
+      "comparative_quality": "TO_BE_MEASURED"
+    },
+    {
+      "feature": "raw heterogeneous linear score fusion",
+      "reason": "combines heterogeneous score scales without explicit calibration",
+      "comparative_quality": "TO_BE_MEASURED"
+    }
+  ],
+  "ground_truth": {
+    "coverage": "PARTIAL_INSUFFICIENT_FOR_MASTER_COMPARISON",
+    "target_categories": 18,
+    "universal_plus_minus_5_frame_tolerance": false,
+    "primary_frame_evaluation": "annotated valid authoritative-frame interval"
+  },
+  "benchmark_plan": {
+    "metrics": [
+      "VR@K",
+      "FIR@K",
+      "MRR",
+      "MFD",
+      "QA_EVIDENCE_RECALL",
+      "QA_EMA_INTERNAL_IF_APPROPRIATE",
+      "TRAKE_EHR",
+      "TRAKE_CSA",
+      "p50_latency",
+      "p95_latency",
+      "frames_decoded_per_query",
+      "operator_TFRR",
+      "operator_TTEF"
+    ],
+    "qa_metric_note": "Exact-match answer accuracy is an internal proposed metric only; official QA scoring semantics are unresolved.",
+    "sample_size": "TO_BE_ESTABLISHED_FROM_CATEGORY_COVERAGE_AND_PRECISION_POWER_REQUIREMENT",
+    "statistical_methodology": "PROPOSED_PAIRED_BOOTSTRAP_AND_RANDOMIZATION_WHERE_APPROPRIATE",
+    "performance_thresholds": "TO_BE_ESTABLISHED_FROM_BASELINE",
+    "frame_id_mismatch_tolerance": 0,
+    "stages": [
+      "Stage 1: correctness and provenance",
+      "Stage 2: P0 baseline KIS/OCR/ASR/QA/TRAKE",
+      "Stage 3: component ablations",
+      "Stage 4: P1-A operator workflow evaluation",
+      "Stage 5: P1-B sparse frame access benchmark",
+      "Stage 6: P1-C dense KIS A/B",
+      "Stage 7: P2 DINOv3 / TransNetV2 / TRAKE parameter experiments"
+    ]
+  },
+  "priorities": [
+    {
+      "priority": "P0",
+      "item": "multi-task ground-truth expansion and frozen baseline capture"
+    },
+    {
+      "priority": "P0",
+      "item": "failure taxonomy and serialization/frame-ID correctness gates"
+    },
+    {
+      "priority": "P1-A",
+      "item": "operator timeline/neighbor workflow evaluation"
+    },
+    {
+      "priority": "P1-B",
+      "item": "sparse frame access benchmark with no preselected winner"
+    },
+    {
+      "priority": "P1-C",
+      "item": "dense KIS A/B after sparse-access baseline"
+    },
+    {
+      "priority": "P2",
+      "item": "DINOv3, TransNetV2 and TRAKE parameter studies"
+    }
+  ],
+  "failure_taxonomy": [
+    "QUERY_PARSE_MISS",
+    "TRANSLATION_MISS",
+    "VISUAL_MODEL_MISS",
+    "SAMPLING_MISS",
+    "OCR_MISS",
+    "ASR_MISS",
+    "EXACT_TEXT_MISS",
+    "FUSION_MISS",
+    "RERANK_MISS",
+    "DEDUP_MISS",
+    "TEMPORAL_REFINEMENT_MISS",
+    "TRAKE_ALIGNMENT_MISS",
+    "FRAME_MAPPING_MISS",
+    "RESULT_SERIALIZATION_MISS",
+    "OPERATOR_UI_MISS",
+    "DATASET_ANNOTATION_ISSUE",
+    "AMBIGUOUS_QUERY"
+  ],
+  "unresolved_questions": [
+    "comparative KIS/OCR/ASR/QA/TRAKE quality across audited systems",
+    "cache vs grouped sequential vs GOP-aware vs GPU sparse-access behavior by workload",
+    "DINOv3 vs SigLIP2 instance Precision/Recall@K",
+    "TransNetV2 index-cardinality vs recall tradeoff",
+    "appropriate TRAKE transition penalty and max_gap for target corpus",
+    "official QA scoring semantics",
+    "complete offline runtime verification"
+  ]
+}
