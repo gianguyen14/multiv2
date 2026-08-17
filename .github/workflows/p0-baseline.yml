@@ -44,7 +44,7 @@ jobs:
         run: python -m compileall -q evaluation/p0_baseline.py evaluation/p0_run_current.py
 
       - name: Run evaluator unit tests
-        run: python -m unittest tests.unit.test_p0_baseline_evaluator tests.unit.test_p0_run_current -v
+        run: python -m unittest discover -s tests/unit -p 'test_p0_*' -v
 
       - name: Run synthetic P0 smoke evaluation
         run: |
