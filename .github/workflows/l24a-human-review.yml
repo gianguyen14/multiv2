@@ -1,4 +1,4 @@
-name: L24a Human Review Prep
+name: L24a Human vs System Count Evaluation
 
 on:
   push:
@@ -7,12 +7,16 @@ on:
     paths:
       - '.github/workflows/l24a-human-review.yml'
       - 'scripts/prepare_l24a_review.py'
+      - 'scripts/evaluate_l24a_counts.py'
+      - 'eval/l24a/**'
   pull_request:
     branches:
       - main
     paths:
       - '.github/workflows/l24a-human-review.yml'
       - 'scripts/prepare_l24a_review.py'
+      - 'scripts/evaluate_l24a_counts.py'
+      - 'eval/l24a/**'
   workflow_dispatch:
 
 permissions:
@@ -20,7 +24,7 @@ permissions:
 
 jobs:
   prepare-review:
-    name: Download, extract, inventory, sample
+    name: Human-first download, extract, inventory, sample
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
@@ -33,7 +37,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg unzip curl
           python -m pip install --upgrade pip
-          python -m pip install pillow
+          python -m pip install --no-cache-dir pillow
 
       - name: Download Videos_L24_a
         run: |
@@ -53,6 +57,7 @@ jobs:
         run: |
           mkdir -p /tmp/l24a/extracted
           unzip -q /tmp/l24a/Videos_L24_a.zip -d /tmp/l24a/extracted
+          rm -f /tmp/l24a/Videos_L24_a.zip
           find /tmp/l24a/extracted -type f | sort | sed -n '1,120p'
           echo "file_count=$(find /tmp/l24a/extracted -type f | wc -l)"
 
@@ -61,7 +66,7 @@ jobs:
           python scripts/prepare_l24a_review.py /tmp/l24a/extracted artifacts/l24a-human-review
           cat artifacts/l24a-human-review/inventory.csv
 
-      - name: Upload review artifact
+      - name: Upload human review artifact
         uses: actions/upload-artifact@v4
         with:
           name: l24a-human-review
@@ -69,3 +74,83 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           compression-level: 6
+
+  system-diagnostic:
+    name: CurrentSystem sampled-frame count diagnostic
+    needs: prepare-review
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      COMPUTE_DEVICE: cpu
+      VISUAL_DEVICE: cpu
+      MODEL_CACHE_DIR: ${{ runner.temp }}/models
+      HF_HOME: ${{ runner.temp }}/models/huggingface
+      TORCH_HOME: ${{ runner.temp }}/models/torch
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Download frozen human-review samples
+        uses: actions/download-artifact@v4
+        with:
+          name: l24a-human-review
+          path: artifacts/l24a-human-review
+
+      - name: Install CPU runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            tesseract-ocr \
+            tesseract-ocr-eng \
+            tesseract-ocr-vie \
+            libgl1 \
+            libglib2.0-0
+          python -m pip install --upgrade pip
+          # Install a CPU PyTorch wheel first so the generic project dependency
+          # does not pull the multi-gigabyte CUDA runtime onto a CPU runner.
+          python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch
+          python -m pip install --no-cache-dir -e .
+
+      - name: Prepare active SigLIP2 model
+        run: |
+          python projectctl.py models --prepare --visual --json
+          python projectctl.py models --verify-offline --visual --json
+
+      - name: Run human-vs-system count comparison
+        run: |
+          python scripts/evaluate_l24a_counts.py \
+            --review-root artifacts/l24a-human-review \
+            --ground-truth eval/l24a/human_count_gt.jsonl \
+            --output-dir artifacts/l24a-system-comparison \
+            --device cpu \
+            --batch-size 8
+          cat artifacts/l24a-system-comparison/system_comparison.md
+
+      - name: Upload system comparison
+        uses: actions/upload-artifact@v4
+        with:
+          name: l24a-system-comparison
+          path: artifacts/l24a-system-comparison
+          if-no-files-found: error
+          retention-days: 14
+
+  technical-gate:
+    name: L24a evaluation technical gate
+    if: always()
+    needs: [prepare-review, system-diagnostic]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require both stages to complete
+        env:
+          HUMAN: ${{ needs.prepare-review.result }}
+          SYSTEM: ${{ needs.system-diagnostic.result }}
+        run: |
+          echo "human=$HUMAN system=$SYSTEM"
+          test "$HUMAN" = success
+          test "$SYSTEM" = success
