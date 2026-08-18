@@ -1,0 +1,65 @@
+name: L24a Human Review Prep
+
+on:
+  push:
+    branches:
+      - eval/l24a-human-system-counts
+    paths:
+      - '.github/workflows/l24a-human-review.yml'
+      - 'scripts/prepare_l24a_review.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare-review:
+    name: Download, extract, inventory, sample
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install review dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg unzip curl
+          python -m pip install --upgrade pip
+          python -m pip install pillow
+
+      - name: Download Videos_L24_a
+        run: |
+          mkdir -p /tmp/l24a
+          curl \
+            --fail \
+            --location \
+            --retry 5 \
+            --retry-all-errors \
+            --connect-timeout 30 \
+            --output /tmp/l24a/Videos_L24_a.zip \
+            'https://aic-data.ledo.io.vn/Videos_L24_a.zip'
+          ls -lh /tmp/l24a/Videos_L24_a.zip
+          unzip -t /tmp/l24a/Videos_L24_a.zip | tail -n 5
+
+      - name: Extract archive
+        run: |
+          mkdir -p /tmp/l24a/extracted
+          unzip -q /tmp/l24a/Videos_L24_a.zip -d /tmp/l24a/extracted
+          find /tmp/l24a/extracted -type f | sort | sed -n '1,120p'
+          echo "file_count=$(find /tmp/l24a/extracted -type f | wc -l)"
+
+      - name: Build human-first review artifact
+        run: |
+          python scripts/prepare_l24a_review.py /tmp/l24a/extracted artifacts/l24a-human-review
+          cat artifacts/l24a-human-review/inventory.csv
+
+      - name: Upload review artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: l24a-human-review
+          path: artifacts/l24a-human-review
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 6
