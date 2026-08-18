@@ -28,7 +28,9 @@
 <script>
 const form=document.querySelector('#search-form'),type=document.querySelector('#query-type'),queryInput=document.querySelector('#query'),imageFile=document.querySelector('#image-file'),results=document.querySelector('#results'),status=document.querySelector('#status'),events=document.querySelector('#events');
 type.onchange=()=>{
-  events.style.display=type.value==='trake'?'block':'none';
+  const trake=type.value==='trake';
+  events.style.display=trake?'block':'none';
+  events.toggleAttribute('required',trake);
   if(type.value==='image'){
     queryInput.style.display='none';
     queryInput.removeAttribute('required');
@@ -36,7 +38,7 @@ type.onchange=()=>{
     imageFile.setAttribute('required','');
   }else{
     queryInput.style.display='block';
-    queryInput.setAttribute('required','');
+    queryInput.toggleAttribute('required',!trake);
     imageFile.style.display='none';
     imageFile.removeAttribute('required');
   }
@@ -55,7 +57,7 @@ form.onsubmit=async event=>{
       formData.append('file',file);
       response=await fetch('/api/search/image?top_k=100',{method:'POST',body:formData});
     }else{
-      const body={query:queryInput.value,query_type:type.value,events:events.value.split('\n').filter(Boolean)};
+      const body={query:queryInput.value,query_type:type.value,events:events.value.split('\n').map(value=>value.trim()).filter(Boolean)};
       response=await fetch('/api/search',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     }
     if(!response.ok)throw new Error(await response.text());
