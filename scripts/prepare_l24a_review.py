@@ -106,7 +106,7 @@ def main() -> int:
     root = args.input_dir.resolve()
     out = args.output_dir.resolve()
     out.mkdir(parents=True, exist_ok=True)
-    temp = out / "_frames"
+    overview_root = out / "overview_frames"
 
     videos = sorted(p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in VIDEO_EXTS)
     if not videos:
@@ -125,7 +125,7 @@ def main() -> int:
         overview_times = sample_times(duration, 16)
         overview_frames: list[tuple[Path, float]] = []
         for j, ts in enumerate(overview_times):
-            frame_path = temp / stem / f"overview_{j:02d}.jpg"
+            frame_path = overview_root / stem / f"overview_{j:02d}_{ts:.2f}s.jpg"
             extract_frame(video, ts, frame_path, 480)
             overview_frames.append((frame_path, ts))
         make_sheet(
@@ -168,16 +168,12 @@ def main() -> int:
         f.write(
             "Human-first review artifact for Videos_L24_a.\n"
             "overview/: 16 uniformly sampled frames per video in a 4x4 sheet.\n"
+            "overview_frames/: those 16 sampled frames retained individually for later system comparison.\n"
             "detail/: 4 larger representative frames (20/40/60/80%).\n"
             "detail_frames/: the 4 larger frames individually.\n"
             "inventory.json/csv: ffprobe metadata.\n"
             "No model-generated interpretation is included in this stage.\n"
         )
-
-    # Keep artifact compact; raw temporary overview frames are not needed after sheets are made.
-    if temp.exists():
-        import shutil
-        shutil.rmtree(temp)
 
     print(f"Prepared {len(videos)} videos into {out}")
     return 0
