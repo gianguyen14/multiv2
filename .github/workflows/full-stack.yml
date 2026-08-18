@@ -1,0 +1,220 @@
+name: Full Stack Functionality
+
+on:
+  push:
+    branches:
+      - main
+      - 'ci/full-stack-functionality'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: full-stack-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend API + CPU feature suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      HF_HUB_OFFLINE: '1'
+      TRANSFORMERS_OFFLINE: '1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements/base.txt
+
+      - name: Install system runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ffmpeg \
+            tesseract-ocr \
+            tesseract-ocr-eng \
+            tesseract-ocr-vie
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+
+      - name: Compile backend and tests
+        run: |
+          python -m compileall -q backend tests/integration/test_api_full_surface.py
+
+      - name: Runtime dependency check
+        run: python projectctl.py env --check
+
+      - name: Offline application smoke
+        run: python projectctl.py smoke
+
+      - name: Public FastAPI surface contract
+        run: |
+          mkdir -p artifacts
+          pytest -q tests/integration/test_api_full_surface.py \
+            --junitxml=artifacts/backend-api-junit.xml
+
+      - name: Current supported CPU suite
+        run: |
+          pytest \
+            -m 'not slow and not real_model and not network and not gpu' \
+            --ignore=tests/e2e \
+            --ignore=tests/integration/test_m12_quality.py \
+            --ignore=tests/integration/test_m13_5_evaluation.py \
+            --ignore=tests/integration/test_m14_evaluation.py \
+            --ignore=tests/integration/test_faiss_siglip_index_integration.py \
+            --ignore=tests/unit/test_m13_5_corpus.py \
+            --ignore=tests/unit/test_m22_end_to_end_benchmark.py \
+            --deselect=tests/unit/test_gpu_rc2_stabilization.py::test_siglip2_vocab_and_token_invariants \
+            --deselect=tests/unit/test_siglip2.py::TestSigLIP2Encoder::test_embedding_dim_property \
+            --deselect=tests/unit/test_siglip2.py::TestSigLIP2Encoder::test_clear_cache \
+            --junitxml=artifacts/backend-cpu-junit.xml
+
+      - name: Upload backend test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports
+          path: artifacts/*junit.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+  frontend:
+    name: Frontend Chromium E2E — KIS / QA / TRAKE / image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install browser test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Run Chromium functionality tests
+        run: |
+          mkdir -p artifacts
+          pytest -q tests/e2e/test_frontend_playwright.py \
+            --junitxml=artifacts/frontend-e2e-junit.xml
+
+      - name: Upload frontend test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-e2e-report
+          path: artifacts/frontend-e2e-junit.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+  docker:
+    name: Docker HTTP full-stack smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build application image
+        run: docker build --pull --tag aic-retrieval:full-stack-ci .
+
+      - name: Verify image runtime imports
+        run: |
+          docker run --rm \
+            --entrypoint python \
+            aic-retrieval:full-stack-ci \
+            -c "import backend; import backend.app; import faiss; import av; print('container imports: OK')"
+
+      - name: Start application container
+        run: |
+          docker run -d --name aic-full-stack-ci -p 8000:8000 aic-retrieval:full-stack-ci
+
+      - name: Wait for live health
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8000/health/live >/tmp/health.json; then
+              cat /tmp/health.json
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs aic-full-stack-ci
+          exit 1
+
+      - name: Verify frontend is served by backend
+        run: |
+          curl --fail --silent http://127.0.0.1:8000/ >/tmp/index.html
+          grep -q 'AIC 2026 Retrieval Console' /tmp/index.html
+          grep -q 'Textual KIS' /tmp/index.html
+          grep -q 'Video Q&amp;A' /tmp/index.html
+          grep -q 'TRAKE' /tmp/index.html
+          grep -q 'Image Search' /tmp/index.html
+
+      - name: Verify unconfigured readiness and search behavior
+        run: |
+          code=$(curl --silent --output /tmp/ready.json --write-out '%{http_code}' http://127.0.0.1:8000/health/ready)
+          test "$code" = "503"
+          code=$(curl --silent --output /tmp/search.json --write-out '%{http_code}' \
+            -H 'content-type: application/json' \
+            -d '{"query":"smoke","query_type":"kis"}' \
+            http://127.0.0.1:8000/api/search)
+          test "$code" = "503"
+
+      - name: Capture container logs
+        if: always()
+        run: docker logs aic-full-stack-ci > docker-full-stack.log 2>&1 || true
+
+      - name: Upload container log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-full-stack-log
+          path: docker-full-stack.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Stop application container
+        if: always()
+        run: docker rm -f aic-full-stack-ci || true
+
+  gate:
+    name: Full-stack required gate
+    if: always()
+    needs: [backend, frontend, docker]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every functionality job to pass
+        env:
+          BACKEND: ${{ needs.backend.result }}
+          FRONTEND: ${{ needs.frontend.result }}
+          DOCKER: ${{ needs.docker.result }}
+        run: |
+          echo "backend=$BACKEND"
+          echo "frontend=$FRONTEND"
+          echo "docker=$DOCKER"
+          test "$BACKEND" = success
+          test "$FRONTEND" = success
+          test "$DOCKER" = success
