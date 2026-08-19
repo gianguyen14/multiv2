@@ -98,7 +98,7 @@ jobs:
 
   l24a-count-eval:
     name: L24a human-vs-system counting evaluation
-    if: github.event_name == 'pull_request' && github.head_ref == 'eval/l24a-human-system-counts'
+    if: github.event_name == 'pull_request' && github.head_ref == 'eval/l24a-count-benchmark-run'
     runs-on: ubuntu-latest
     timeout-minutes: 240
     env:
