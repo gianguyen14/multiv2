@@ -117,10 +117,18 @@ jobs:
           python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch
           python -m pip install --no-cache-dir -e .
 
+      - name: Cache active SigLIP2 snapshot
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/models/huggingface
+          key: l24a-siglip2-${{ runner.os }}-${{ hashFiles('backend/app/core/config.py') }}
+
       - name: Prepare active SigLIP2 model
         run: |
-          python projectctl.py models --prepare --visual --json
-          python projectctl.py models --verify-offline --visual --json
+          # `models` does not inherit the common --json parser after the
+          # subcommand, so keep this invocation parser-safe and explicit.
+          python projectctl.py models --prepare --visual
+          python projectctl.py models --verify-offline --visual
 
       - name: Run human-vs-system count comparison
         run: |
