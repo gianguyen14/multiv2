@@ -4,6 +4,8 @@ This file was written **before** running the retrieval-system comparison. The ar
 
 The review is visual-only. It is not claimed to be a full audio transcript or exhaustive frame-by-frame narration.
 
+The counting GT is now **frozen at 43 questions — exactly one anchored counting question per reviewed video**. Human answers must not be altered after inspecting CurrentSystem output; any later correction must be explicitly versioned and justified from renewed human review of the source video.
+
 | Video | Human visual summary | Count anchor |
 |---|---|---|
 | L24_V002 | Night arena dragon-dance routine with a long yellow/green dragon, many green-clad performers, judges and a decorated gate. | 421.79s — 2 large red lanterns |
