@@ -1,6 +1,6 @@
 # Videos_L24_a evaluation
 
-This directory contains the frozen human-first counting benchmark used by PR #10.
+This directory contains the frozen human-first counting benchmark executed by the L24a evaluation PR.
 
 ## Order of operations
 
