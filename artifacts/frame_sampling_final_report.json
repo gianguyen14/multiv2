@@ -1,0 +1,72 @@
+{
+  "milestone": "AIC_FRAME_OPTIMIZATION",
+  "status": "AIC_FRAME_OPTIMIZATION_COMPLETE_WITH_DEFERRED_REAL_VALIDATION",
+  "baseline": {
+    "sampling_mode": "legacy",
+    "interval_seconds": 1.0,
+    "dedup_enabled": false,
+    "local_refine_enabled": false,
+    "projected_31_video_global_vectors": 36724,
+    "projected_storage_mb": 128.41
+  },
+  "recommended_configuration": {
+    "VISUAL_SAMPLING_MODE": "sparse_shot",
+    "VISUAL_GLOBAL_SAMPLE_SECONDS": 5.0,
+    "VISUAL_DEDUP_ENABLED": true,
+    "VISUAL_DEDUP_THRESHOLD": 0.97,
+    "LOCAL_REFINE_ENABLED": true,
+    "LOCAL_REFINE_WINDOW_SECONDS": 10.0,
+    "LOCAL_REFINE_INTERVAL_SECONDS": 0.5,
+    "LOCAL_REFINE_MAX_REGIONS": 5
+  },
+  "rollback_configuration": {
+    "VISUAL_SAMPLING_MODE": "legacy",
+    "VISUAL_DEDUP_ENABLED": false,
+    "LOCAL_REFINE_ENABLED": false
+  },
+  "reduction_summary": {
+    "legacy_projected_vectors": 36724,
+    "candidate_b_periodic_vectors": 7358,
+    "candidate_b_projected_reduction_pct": 79.96,
+    "empirical_dedup_subset_reduction_pct": 81.64,
+    "empirical_subset_videos": ["L22_V001", "L22_V002", "L22_V003"]
+  },
+  "local_refinement_summary": {
+    "window_seconds": 10.0,
+    "interval_seconds": 0.5,
+    "max_regions": 5,
+    "max_local_timestamps_per_query": 205,
+    "persistence": "query-time only; never persisted to global FAISS"
+  },
+  "evidence_classification": {
+    "measured": [
+      "128 unit and regression tests passing sequentially (83 focused + 45 broader unit)",
+      "Empirical dedup simulation on 3-video precomputed SigLIP index (3,578 vectors -> 657 retained at 5s/0.97)",
+      "Exact index byte measurement from FAISS generation (3,666.4 B/vector)",
+      "Local refinement bound mathematically bounded to <= 205 timestamps/query"
+    ],
+    "projected": [
+      "31-video 1s legacy vector count: 36,724",
+      "31-video 5s periodic vector count: 7,358 (79.96% reduction)",
+      "31-video storage reduction: 128.41 MB (legacy) -> 21.74 MB (Candidate B with dedup, -83.1%)"
+    ],
+    "deferred": [
+      "Real TransNet shot detector inference and weights",
+      "31-video real ingestion and new index publication",
+      "Real-video local video decode and SigLIP frame embedding",
+      "End-to-end ConfiguredSearch quality benchmark (Hit@10 / MRR) on full production corpus"
+    ]
+  },
+  "known_limitations": [
+    "TransNetV2Adapter real weights/runtime inference remain unresolved locally; pipeline gracefully operates in periodic-only fallback when detector returns empty shots",
+    "When multiple distinct shots resolve to the exact same source frame, FrameRecord stores a single scalar shot_id with later shot ordinal prevailing",
+    "Real local-refinement quality and latency benchmarks remain unmeasured due to the safe 4 GB RAM policy",
+    "Hit@10 and MRR improvements are not claimed without trusted ground-truth annotations on the local machine"
+  ],
+  "resource_safety": {
+    "model_downloads": 0,
+    "parallel_heavy_jobs": 0,
+    "oom_risk_workload": 0,
+    "active_background_processes": 0
+  }
+}

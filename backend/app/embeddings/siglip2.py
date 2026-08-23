@@ -5,6 +5,7 @@ Supports CPU and CUDA inference with model caching.
 """
 
 import hashlib
+import logging
 import os
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
@@ -15,13 +16,23 @@ import torch.nn.functional as F
 from PIL import Image
 from transformers import AutoProcessor, SiglipModel
 
-from backend.app.core.config import SIGLIP2_MODEL, SIGLIP_ENABLED
+from backend.app.core.config import (
+    SIGLIP2_MODEL,
+    SIGLIP_ENABLED,
+    SIGLIP_LONG_TEXT_MODE,
+    SIGLIP_TEXT_CHUNK_STRIDE,
+    SIGLIP_TEXT_MAX_CHUNKS,
+    SIGLIP_TEXT_MAX_LENGTH,
+)
 from backend.app.runtime.device_policy import resolve_device
+
+logger = logging.getLogger(__name__)
 
 
 def resolve_siglip2_revision(model_name: str, cache_dir: Optional[Path] = None) -> str:
     try:
         from huggingface_hub import snapshot_download
+
         from backend.app.model_cache import model_cache_dir
         actual_cache = model_cache_dir("huggingface", cache_dir)
         path = snapshot_download(repo_id=model_name, cache_dir=actual_cache, local_files_only=True)
@@ -58,6 +69,10 @@ class SigLIP2Encoder:
         force_download: bool = False,
         local_files_only: bool = False,
         revision: Optional[str] = None,
+        long_text_mode: Optional[str] = None,
+        text_max_length: Optional[int] = None,
+        text_chunk_stride: Optional[int] = None,
+        text_max_chunks: Optional[int] = None,
     ):
         """Initialize the SigLIP2 encoder.
 
@@ -84,6 +99,25 @@ class SigLIP2Encoder:
         self.auto_batch_size = 16 if self.device.startswith("cuda") else 8
         self.last_batch_size = None
         self.revision = revision or resolve_siglip2_revision(self.model_name, self.cache_dir)
+
+        self.long_text_mode = (long_text_mode or SIGLIP_LONG_TEXT_MODE).lower()
+        self.text_max_length = (
+            SIGLIP_TEXT_MAX_LENGTH if text_max_length is None else text_max_length
+        )
+        self.text_chunk_stride = (
+            SIGLIP_TEXT_CHUNK_STRIDE if text_chunk_stride is None else text_chunk_stride
+        )
+        self.text_max_chunks = (
+            SIGLIP_TEXT_MAX_CHUNKS if text_max_chunks is None else text_max_chunks
+        )
+        if self.long_text_mode not in {"chunk_mean", "truncate"}:
+            raise ValueError("long_text_mode must be 'chunk_mean' or 'truncate'")
+        if self.text_max_length < 2:
+            raise ValueError("text_max_length must be at least 2")
+        if not 0 <= self.text_chunk_stride < self.text_max_length:
+            raise ValueError("text_chunk_stride must be >= 0 and less than text_max_length")
+        if self.text_max_chunks < 1:
+            raise ValueError("text_max_chunks must be at least 1")
 
 
         self.force_download = force_download
@@ -176,23 +210,7 @@ class SigLIP2Encoder:
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i + batch_size]
 
-            # Process text
-            inputs = self.processor(
-                text=batch,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                max_length=64,
-            )
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}
-
-            with torch.no_grad():
-                text_outputs = self.model.get_text_features(**inputs)
-                # text_outputs is a BaseModelOutputWithPooling, get pooled_output
-                text_embeddings = text_outputs.pooler_output
-                # text_embeddings shape: (batch_size, hidden_size)
-
-            embeddings = text_embeddings.detach().cpu().to(torch.float32).numpy()
+            embeddings = self._encode_text_batch(batch, batch_size)
             all_embeddings.append(embeddings)
 
         result = np.vstack(all_embeddings) if all_embeddings else np.zeros((0, self.embedding_dim), dtype=np.float32)
@@ -204,6 +222,108 @@ class SigLIP2Encoder:
             result = result / norms
 
         return result.astype(np.float32)
+
+    def _encode_text_batch(self, batch: List[str], inference_batch_size: int) -> np.ndarray:
+        """Encode one logical text batch and combine overflow chunks per text."""
+        text_inputs = batch
+        sample_mapping = torch.arange(len(batch), dtype=torch.long)
+        if self.long_text_mode == "chunk_mean":
+            text_inputs, sample_mapping = self._split_text_batch(batch)
+
+        processor_kwargs = {
+            "text": text_inputs,
+            "return_tensors": "pt",
+            "padding": True,
+            "truncation": True,
+            "max_length": self.text_max_length,
+        }
+        inputs = self.processor(**processor_kwargs)
+        if int(inputs["input_ids"].shape[0]) != len(sample_mapping):
+            raise RuntimeError("SigLIP processor changed the number of prepared text chunks")
+
+        inputs = {key: value.to(self.device) for key, value in inputs.items()}
+        chunk_embeddings = []
+        for start in range(0, len(sample_mapping), inference_batch_size):
+            model_inputs = {
+                key: value[start:start + inference_batch_size]
+                for key, value in inputs.items()
+            }
+            with torch.no_grad():
+                outputs = self.model.get_text_features(**model_inputs)
+            chunk_embeddings.append(
+                outputs.pooler_output.detach().cpu().to(torch.float32).numpy()
+            )
+
+        encoded_chunks = np.vstack(chunk_embeddings)
+        mapping = sample_mapping.cpu().numpy()
+        aggregated = []
+        for sample_index in range(len(batch)):
+            sample_chunks = encoded_chunks[mapping == sample_index]
+            if len(sample_chunks) == 1:
+                aggregated.append(sample_chunks[0])
+                continue
+
+            # Normalize before averaging so one chunk cannot dominate only due
+            # to vector magnitude. Final normalization remains controlled by
+            # encode_text(normalize=...).
+            norms = np.linalg.norm(sample_chunks, axis=1, keepdims=True)
+            norms[norms == 0] = 1.0
+            aggregated.append(np.mean(sample_chunks / norms, axis=0))
+        return np.asarray(aggregated, dtype=np.float32)
+
+    def _split_text_batch(self, batch: List[str]) -> Tuple[List[str], torch.Tensor]:
+        """Split text by model tokens, supporting slow and fast tokenizers."""
+        tokenizer = getattr(self.processor, "tokenizer", None)
+        if tokenizer is None:
+            raise RuntimeError("SigLIP processor does not expose a tokenizer")
+
+        special_tokens = int(tokenizer.num_special_tokens_to_add(pair=False))
+        content_length = self.text_max_length - special_tokens
+        if content_length < 1:
+            raise ValueError("text_max_length is too small for tokenizer special tokens")
+        if self.text_chunk_stride >= content_length:
+            raise ValueError(
+                "text_chunk_stride must be less than the available content token length"
+            )
+
+        step = content_length - self.text_chunk_stride
+        chunk_texts: List[str] = []
+        sample_mapping: List[int] = []
+        for sample_index, text in enumerate(batch):
+            token_ids = tokenizer.encode(text, add_special_tokens=False)
+            if len(token_ids) <= content_length:
+                chunk_texts.append(text)
+                sample_mapping.append(sample_index)
+                continue
+
+            token_chunks = []
+            for start in range(0, len(token_ids), step):
+                token_chunks.append(token_ids[start:start + content_length])
+                if start + content_length >= len(token_ids):
+                    break
+
+            if len(token_chunks) > self.text_max_chunks:
+                offsets = np.linspace(
+                    0, len(token_chunks) - 1, self.text_max_chunks, dtype=int
+                )
+                token_chunks = [token_chunks[int(offset)] for offset in offsets]
+                logger.warning(
+                    "SigLIP text query produced more than %d chunks; sampling "
+                    "across the complete query",
+                    self.text_max_chunks,
+                )
+
+            for token_chunk in token_chunks:
+                chunk_texts.append(
+                    tokenizer.decode(
+                        token_chunk,
+                        skip_special_tokens=True,
+                        clean_up_tokenization_spaces=False,
+                    )
+                )
+                sample_mapping.append(sample_index)
+
+        return chunk_texts, torch.tensor(sample_mapping, dtype=torch.long)
 
     def encode_image(
         self,
@@ -335,6 +455,10 @@ class SigLIP2Encoder:
             "dtype": str(self.dtype),
             "automatic_batch_size": self.auto_batch_size,
             "last_batch_size": self.last_batch_size,
+            "long_text_mode": self.long_text_mode,
+            "text_max_length": self.text_max_length,
+            "text_chunk_stride": self.text_chunk_stride,
+            "text_max_chunks": self.text_max_chunks,
             "cache_dir": str(self.cache_dir) if self.cache_dir else None,
             "initialized": self._initialized,
         }

@@ -1,0 +1,25 @@
+{
+  "milestone": "M31.1",
+  "status": "FINAL 3-VIDEO ROADMAP FROZEN",
+  "gt_hash": "c5afd80cf58f033675ed454c1441a61908291c6d81c06304301ee1c0a842e5d5",
+  "target_videos": ["L22_V001", "L22_V002", "L22_V003"],
+  "metrics": {
+    "kis_r1": 0.3158,
+    "kis_r5": 0.3684,
+    "kis_r20": 0.4737,
+    "kis_r100": 0.7895,
+    "kis_correct_video_rate": 1.0,
+    "qa_localization_rate": 0.3636,
+    "qa_positive_accuracy": 0.5455,
+    "qa_full_condition_score": 0.3636,
+    "qa_negative_abstention_rate": 1.0,
+    "qa_false_answer_rate": 0.0,
+    "trake_video_match_rate": 0.6667,
+    "trake_ordering_validity": 1.0
+  },
+  "tests": {
+    "full_suite_passed": true,
+    "unseen_generalization_passed": true,
+    "clean_git_diff": true
+  }
+}

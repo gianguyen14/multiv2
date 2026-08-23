@@ -5,21 +5,27 @@ from pathlib import Path
 import numpy as np
 
 from backend.app.config.video_ingest_config import VideoIngestConfig
+from backend.app.shot_detection.base import get_shot_detector
+from backend.app.video.frame_dedup import filter_near_duplicate_frames
 from backend.app.video.frame_id_policy import FrameIdPolicy
 from backend.app.video.frame_record import FrameRecord
-from backend.app.video.frame_sampler import iter_sample_frames
+from backend.app.video.frame_sampler import iter_sample_frames, sample_sparse_shot_frames_with_protection
 from backend.app.video.frame_store import FrameStore, source_hash
 from backend.app.video.ingest_manifest import IngestManifest
 from backend.app.video.video_decoder import inspect_video, iter_frames
 
 
 class VideoIngestionPipeline:
-    def __init__(self, encoder, config=None, failpoint=None):
+    def __init__(self, encoder, config=None, failpoint=None, shot_detector=None):
         self.config = config or VideoIngestConfig.from_env()
         self.encoder = encoder
         self.store = FrameStore(self.config.processed_root)
         self.policy = FrameIdPolicy(self.config.frame_id_policy)
         self.failpoint = failpoint or (lambda name, context: None)
+        self.shot_detector = shot_detector if shot_detector is not None else (
+            get_shot_detector() if self.config.visual_sampling_mode == "sparse_shot" else None
+        )
+        self._protected_indices_by_video: dict[str, set[int]] = {}
 
     def _encoder_identity(self):
         identity = self.encoder.identity() if hasattr(self.encoder, "identity") else {
@@ -79,7 +85,33 @@ class VideoIngestionPipeline:
                     for managed in frame_dir.glob("*.*"):
                         managed.unlink()
                 records = []
-                for item in iter_sample_frames(counted_frames(), self.config.sample_interval_seconds):
+                if self.config.visual_sampling_mode == "sparse_shot":
+                    shot_boundaries = None
+                    if self.shot_detector is not None:
+                        try:
+                            raw_shots = self.shot_detector.detect_shots(path)
+                            shot_boundaries = [
+                                (s / 1000.0, e / 1000.0)
+                                for s, e in raw_shots
+                                if isinstance(s, (int, float)) and isinstance(e, (int, float)) and e >= s and s >= 0
+                            ]
+                        except Exception:
+                            shot_boundaries = None
+                    sampled_items, protected_set = sample_sparse_shot_frames_with_protection(
+                        counted_frames(),
+                        self.config.effective_sample_interval_seconds,
+                        shot_boundaries=shot_boundaries,
+                    )
+                    self._protected_indices_by_video[video_id] = protected_set
+                    sampler_iter = iter(sampled_items)
+                else:
+                    self._protected_indices_by_video[video_id] = set()
+                    sampler_iter = iter_sample_frames(
+                        counted_frames(),
+                        self.config.effective_sample_interval_seconds,
+                    )
+
+                for item in sampler_iter:
                     frame = item.frame
                     image_path = self.store.image_path(video_id, frame.source_frame_index_zero_based, self.config.frame_format)
                     self.store.save_image(image_path, frame.image, self.config.frame_format, self.config.jpeg_quality)
@@ -88,8 +120,10 @@ class VideoIngestionPipeline:
                         submission_frame_id=self.policy.to_submission_frame_id(frame.source_frame_index_zero_based),
                         timestamp_seconds=frame.timestamp_seconds, pts=frame.pts, width=frame.width,
                         height=frame.height, image_path=image_path,
-                        sample_interval_seconds=self.config.sample_interval_seconds,
-                        ingestion_version=self.config.ingestion_version))
+                        sample_interval_seconds=self.config.effective_sample_interval_seconds,
+                        ingestion_version=self.config.ingestion_version,
+                        shot_id=getattr(item, "shot_id", None),
+                        sampling_reason=getattr(item, "sampling_reason", "periodic")))
                 metadata = replace(metadata, decoded_frame_count=decoded_count)
                 self.store.save_metadata(metadata)
                 self.store.save_records(video_id, records)
@@ -111,10 +145,21 @@ class VideoIngestionPipeline:
                 if (embeddings.shape != (len(records), identity["embedding_dim"]) or not np.isfinite(embeddings).all()
                         or not np.allclose(norms, 1.0, atol=1e-5)):
                     raise ValueError("invalid frame embeddings")
+                if self.config.visual_dedup_enabled:
+                    protected = self._protected_indices_by_video.get(video_id, set())
+                    records, embeddings, _ = filter_near_duplicate_frames(
+                        records,
+                        embeddings,
+                        protected_source_frame_indices=protected,
+                        threshold=self.config.visual_dedup_threshold,
+                        enabled=True,
+                    )
+                    self.store.save_records(video_id, records)
                 self.store.save_embeddings(video_id, embeddings)
                 embedding_ms = (time.perf_counter() - stage_started) * 1000
                 checkpoint = replace(checkpoint, status="embeddings_ready", completed_stage="embeddings",
                     embeddings_fingerprint=self.config.embeddings_fingerprint(identity), encoder_identity=identity,
+                    sampled_frame_count=len(records),
                     embedding_count=len(records), embedding_dim=identity["embedding_dim"], failed_stage=None, error=None)
                 self.store.save_manifest(checkpoint)
                 self.failpoint("after_embeddings", {"video_id": video_id})

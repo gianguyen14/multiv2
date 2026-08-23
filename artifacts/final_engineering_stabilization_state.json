@@ -1,0 +1,44 @@
+{
+  "final_verdict": "FINAL ENGINEERING FREEZE: PASS",
+  "date": "2026-08-14",
+  "active_generation": "gen-3d51a16ea32b4953820583c3af181b31",
+  "processed_root": "data/processed-validation/full-3-videos",
+  "pytest_summary": {
+    "total_collected": 294,
+    "passed": 276,
+    "skipped": 18,
+    "failed": 0,
+    "errors": 0,
+    "real_model_passed": 16
+  },
+  "smoke_matrix": {
+    "models_offline": "PASS",
+    "lexical_search": "PASS",
+    "textual_kis": "PASS",
+    "supported_qa": "PASS",
+    "unsupported_qa_abstention": "PASS",
+    "trake_disjoint_top3": "PASS",
+    "trake_monotonic_top5": "PASS",
+    "exact_image_search": "PASS",
+    "crop_image_search": "PASS",
+    "api_checks_14_of_14": "PASS",
+    "sentinel_resume": "PASS"
+  },
+  "p0_p1_reconciliation": {
+    "trake_alignment": "FIXED_AND_RECONCILED",
+    "ocr_cache_fingerprint": "FIXED_AND_VERIFIED",
+    "asr_cache_fingerprint": "FIXED_AND_VERIFIED",
+    "siglip_model_identity": "FIXED_AND_VERIFIED",
+    "authoritative_architecture": "DECLARED_AND_DEPRECATED_LEGACY",
+    "api_security_headers": "IMPLEMENTED_AND_VERIFIED",
+    "server_local_image_path": "REMOVED_AND_VERIFIED",
+    "docker_implementation": "IMPLEMENTED_AND_DOCUMENTED",
+    "worktree_classification": "INVENTORIED_AND_MANIFESTED"
+  },
+  "quality_tuning_attestation": {
+    "retrieval_weights_tuned": false,
+    "ground_truth_modified": false,
+    "faiss_vectors_modified": false,
+    "quality_metrics_delta": "0% (pure correctness and stabilization)"
+  }
+}

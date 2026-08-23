@@ -1,7 +1,14 @@
 # Configuration flags for the project
 import os
+
 SIGLIP_ENABLED = True
 SIGLIP2_MODEL = "google/siglip2-base-patch16-224"
+# Long text encoding is isolated behind a mode flag so deployments can restore
+# the historical first-window behavior with SIGLIP_LONG_TEXT_MODE=truncate.
+SIGLIP_LONG_TEXT_MODE = os.getenv("SIGLIP_LONG_TEXT_MODE", "chunk_mean").lower()
+SIGLIP_TEXT_MAX_LENGTH = int(os.getenv("SIGLIP_TEXT_MAX_LENGTH", "64"))
+SIGLIP_TEXT_CHUNK_STRIDE = int(os.getenv("SIGLIP_TEXT_CHUNK_STRIDE", "8"))
+SIGLIP_TEXT_MAX_CHUNKS = int(os.getenv("SIGLIP_TEXT_MAX_CHUNKS", "8"))
 FASTER_WHISPER_MODEL = "small"
 DINO_ENABLED = False
 E5_ENABLED = True
@@ -51,3 +58,15 @@ RERANKER_ENABLED = os.getenv("RERANKER_ENABLED", "true").lower() in ("1", "true"
 
 # TRAKE Temporal Coherence settings
 TRAKE_COHERENCE_MODE = os.getenv("TRAKE_COHERENCE_MODE", "diagnostic").lower()
+
+# Visual Frame Sampling Optimization settings
+VISUAL_SAMPLING_MODE = os.getenv("VISUAL_SAMPLING_MODE", "legacy").lower()
+VISUAL_GLOBAL_SAMPLE_SECONDS = float(os.getenv("VISUAL_GLOBAL_SAMPLE_SECONDS", "5.0"))
+VISUAL_DEDUP_ENABLED = os.getenv("VISUAL_DEDUP_ENABLED", "false").lower() in ("true", "1", "yes")
+VISUAL_DEDUP_THRESHOLD = float(os.getenv("VISUAL_DEDUP_THRESHOLD", "0.97"))
+
+# Local Dense Frame Refinement settings
+LOCAL_REFINE_ENABLED = os.getenv("LOCAL_REFINE_ENABLED", "false").lower() in ("true", "1", "yes")
+LOCAL_REFINE_WINDOW_SECONDS = float(os.getenv("LOCAL_REFINE_WINDOW_SECONDS", "10.0"))
+LOCAL_REFINE_INTERVAL_SECONDS = float(os.getenv("LOCAL_REFINE_INTERVAL_SECONDS", "0.5"))
+LOCAL_REFINE_MAX_REGIONS = int(os.getenv("LOCAL_REFINE_MAX_REGIONS", "5"))

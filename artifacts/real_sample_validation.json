@@ -1,0 +1,44 @@
+{
+  "execution": {
+    "videos_processed": ["L22_V001", "L22_V002", "L22_V003"],
+    "total_frames_sampled": 3578,
+    "total_duration_seconds": 3575.646667
+  },
+  "resource_profiling": {
+    "peak_rss_kb": 2636392,
+    "memory_leak_detected": false,
+    "visual_weights_released_before_asr": true
+  },
+  "bugs_found_and_fixed": [
+    {
+      "component": "ingestion",
+      "description": "SigLIP2 model loaded unnecessarily during pure resume due to encoder.embedding_dim access.",
+      "fixed": true
+    },
+    {
+      "component": "retrieval",
+      "description": "Q&A querying lacked deterministic decomposition, causing WH words to negatively impact localization.",
+      "fixed": true
+    },
+    {
+      "component": "api",
+      "description": "FastAPI frame endpoint missing CORS middleware and caching headers.",
+      "fixed": true
+    }
+  ],
+  "retrieval_validation": {
+    "kis_queries_tested": 5,
+    "qa_queries_tested": 5,
+    "trake_queries_tested": 2,
+    "faiss_index_vectors": 3578,
+    "offline_mode_verified": true
+  },
+  "api_validation": {
+    "health_endpoints_pass": true,
+    "search_endpoint_pass": true,
+    "trake_endpoint_pass": true,
+    "invalid_input_rejection_pass": true,
+    "path_traversal_blocked": true
+  },
+  "overall_success": true
+}

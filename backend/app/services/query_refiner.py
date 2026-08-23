@@ -119,6 +119,21 @@ OBJECT_TERMS = {
     "biển": "sea", "rùa": "turtle", "cứu hộ": "rescue workers", "lính cứu hỏa": "firefighters",
 }
 
+# Some Vietnamese nouns are polysemous when they form a compound.  These are
+# linguistic exclusions, not corpus entities: for example, "biển" is the sea,
+# while "biển số" is a licence plate.  A protected compound must not emit the
+# standalone object meaning for the overlapping token.
+OBJECT_CONTEXT_EXCLUSIONS = {
+    "biển": (
+        "biển số",
+        "biển báo",
+        "biển hiệu",
+        "biển quảng cáo",
+        "biển tên",
+        "biển chỉ dẫn",
+    ),
+}
+
 VIETNAMESE_DIACRITICS_PATTERN = re.compile(
     r"[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ"
     r"ÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴĐ]"
@@ -129,6 +144,21 @@ COMMON_VIETNAMESE_TOKENS = {
     "cạnh", "trong", "tại", "biển", "số", "bản", "tin", "thời", "sự", "cẩu", "xe",
     "của", "và", "với", "cho", "được", "có", "là", "các", "những", "một", "nhiều"
 }
+
+
+def _phrase_pattern(phrase: str) -> re.Pattern[str]:
+    """Compile a Unicode-aware whole-word pattern for a normalized phrase."""
+    words = [re.escape(word) for word in phrase.split()]
+    return re.compile(r"(?<!\w)" + r"\s+".join(words) + r"(?!\w)", re.I)
+
+
+def _phrase_spans(text: str, phrase: str) -> List[Tuple[int, int]]:
+    """Return whole-word spans, preventing substrings such as ``chè`` in ``chèo``."""
+    return [match.span() for match in _phrase_pattern(phrase).finditer(text)]
+
+
+def _spans_overlap(left: Tuple[int, int], right: Tuple[int, int]) -> bool:
+    return left[0] < right[1] and right[0] < left[1]
 
 
 def validate_english_caption(caption: Optional[str]) -> bool:
@@ -168,6 +198,101 @@ class DeterministicQueryParser:
         r"\b[A-ZĐÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴ][a-zđàáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵ]*"
         r"(?:\s+[A-ZĐÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴ][a-zđàáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵ]*)+\b"
     )
+
+    PATTERN_SEARCH_INTENT_PREFIX = re.compile(
+        r"^\s*(?:(?:hãy|vui\s+lòng)\s+)?"
+        r"(?:tìm(?:\s+kiếm)?|cho\s+(?:tôi|mình)\s+(?:xem|tìm)|xác\s+định)\s+"
+        r"(?:(?:(?:đoạn\s+)?(?:video|phim)|cảnh|khung\s+hình|hình\s+ảnh)(?!\w)"
+        r"(?:\s+(?:có|cho\s+thấy|về)\s*|\s*[:,-]\s*|\s*$))?",
+        re.I,
+    )
+    PATTERN_INITIAL_WHO = re.compile(
+        r"^(\s*)(?i:ai)(?!\w)(?!\s+[A-ZĐÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴ])"
+    )
+    PATTERN_DANGLING_TEXT_CONSTRAINT = re.compile(
+        r"\b(?:(?:với|mang|có|ghi|chứa|hiển\s+thị)\s+)?"
+        r"(?:dòng\s+chữ|biển\s+số|mã(?:\s+số)?)\s*:?\s*(?=$|[,.;!?])",
+        re.I,
+    )
+    QA_NON_VISUAL_PATTERNS = (
+        re.compile(r"\bcó\s+bao\s+nhiêu\b", re.I),
+        re.compile(r"\b(?:đang\s+)?làm\s+gì\b", re.I),
+        re.compile(r"\b(?:có\s+)?màu\s+gì\b", re.I),
+        re.compile(r"\b(?:đang\s+)?(?:nói|phát\s+biểu)\s+về\s+(?:chủ\s+đề\s+)?gì\b", re.I),
+        re.compile(r"\b(?:là\s+)?gì\b", re.I),
+        re.compile(r"\b(?:xuất\s+hiện|được\s+thấy|được\s+quay)\s+trong\s+(?:đoạn\s+)?(?:video|phim)\b", re.I),
+        re.compile(r"\btrong\s+(?:đoạn\s+)?(?:video|phim)\b", re.I),
+    )
+
+    @classmethod
+    def _build_visual_caption(
+        cls,
+        query: str,
+        exact_strings: List[str],
+        task_type: str,
+    ) -> str:
+        """Remove retrieval instructions and text-only constraints from a visual query."""
+        caption = query
+        for exact in sorted(exact_strings, key=len, reverse=True):
+            escaped = re.escape(exact)
+            bounded_exact = rf"(?<!\w){escaped}(?!\w)"
+            # When an identifier has an explicit textual label, route the whole
+            # constraint to OCR instead of leaving a dangling "biển số"/"mã".
+            labelled_exact = re.compile(
+                r"(?:(?:với|mang|có|ghi|chứa|hiển\s+thị)\s+)?"
+                r"(?:biển\s+số|mã(?:\s+số)?|dòng\s+chữ)\s*:?\s*"
+                r"['\"«“]?"
+                + bounded_exact
+                + r"['\"»”]?",
+                re.I,
+            )
+            caption = labelled_exact.sub(" ", caption)
+            caption = re.sub(rf"['\"«“]?{bounded_exact}['\"»”]?", " ", caption, flags=re.I)
+
+        if exact_strings:
+            caption = cls.PATTERN_DANGLING_TEXT_CONSTRAINT.sub(" ", caption)
+        caption = cls.PATTERN_SEARCH_INTENT_PREFIX.sub("", caption)
+        if task_type == "qa":
+            # Only an initial WH pronoun becomes a generic visible person.  The
+            # title-case guard preserves proper nouns such as any "Ai X..." name.
+            caption = cls.PATTERN_INITIAL_WHO.sub(r"\1người", caption, count=1)
+            for pattern in cls.QA_NON_VISUAL_PATTERNS:
+                caption = pattern.sub(" ", caption)
+
+        caption = re.sub(r"\s+([,.;!?])", r"\1", caption)
+        caption = re.sub(r"\s+", " ", caption).strip(" ,.-:?!")
+        return caption or query.strip()
+
+    @staticmethod
+    def _extract_objects(q_norm: str) -> List[str]:
+        """Extract object meanings using whole phrases and longest-match preference."""
+        protected_spans = {
+            term: [
+                span
+                for phrase in OBJECT_CONTEXT_EXCLUSIONS.get(term, ())
+                for span in _phrase_spans(q_norm, phrase)
+            ]
+            for term in OBJECT_CONTEXT_EXCLUSIONS
+        }
+
+        candidates: List[Tuple[int, int, str]] = []
+        for vi_obj, en_obj in OBJECT_TERMS.items():
+            for span in _phrase_spans(q_norm, vi_obj):
+                if any(_spans_overlap(span, protected) for protected in protected_spans.get(vi_obj, [])):
+                    continue
+                candidates.append((span[0], span[1], en_obj))
+
+        # Prefer the most specific phrase at a shared/contained span ("xe lam"
+        # rather than both "xe" and "xe lam") without suppressing separate objects.
+        selected: List[Tuple[int, int, str]] = []
+        for candidate in sorted(candidates, key=lambda item: (-(item[1] - item[0]), item[0])):
+            span = candidate[:2]
+            if any(span[0] >= kept[0] and span[1] <= kept[1] for kept in selected):
+                continue
+            selected.append(candidate)
+
+        selected.sort(key=lambda item: item[0])
+        return list(dict.fromkeys(item[2] for item in selected))
 
     def parse(self, query: str, task_type: str = "kis") -> QueryPlan:
         q_raw = query.strip()
@@ -238,7 +363,7 @@ class DeterministicQueryParser:
 
         # 7. Extract Known Cultural Terms
         for cult in KNOWN_VI_CULTURAL_TERMS:
-            if cult in q_norm:
+            if _phrase_spans(q_norm, cult):
                 if cult not in kept_vi_terms:
                     kept_vi_terms.append(cult)
                 if cult not in lexical_terms:
@@ -251,20 +376,11 @@ class DeterministicQueryParser:
                     attributes.append(en_color)
 
         # 9. Extract Objects
-        for vi_obj, en_obj in OBJECT_TERMS.items():
-            if re.search(r"\b" + re.escape(vi_obj) + r"\b", q_norm):
-                if en_obj not in objects:
-                    objects.append(en_obj)
+        objects.extend(self._extract_objects(q_norm))
 
-        # Clean visual query (remove explicit code noise for visual captioning)
-        clean_vi = q_raw
-        for exact in exact_strings:
-            # Replace exact code in visual caption with generic placeholder or remove
-            clean_vi = clean_vi.replace(f'"{exact}"', "").replace(f"'{exact}'", "").replace(exact, "")
-        clean_vi = re.sub(r"\bbiển\s+số\s*:\s*", "biển số ", clean_vi, flags=re.I)
-        clean_vi = re.sub(r"\s+", " ", clean_vi).strip(" ,.-:")
-        if not clean_vi:
-            clean_vi = q_raw
+        # Clean visual query: OCR/exact strings use their own retrieval channel,
+        # while visual embeddings receive only observable semantic focus.
+        clean_vi = self._build_visual_caption(q_raw, exact_strings, task_type)
 
         # Deterministic visual query: primary Vietnamese visual query
         # No naive token substitution pseudo-translation (avoids sending broken pseudo-English to SigLIP2)
@@ -323,7 +439,7 @@ class DeterministicQueryParser:
 # 4. Layer B: Local Instruction Model Adapter (Pluggable)
 # =========================================================================
 
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"
 SCHEMA_VERSION = "v1"
 
 SYSTEM_PROMPT_TEMPLATE = """You are a retrieval-query planner for multimodal video search.

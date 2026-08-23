@@ -1,9 +1,11 @@
+import math
 import os
 import re
 import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
 from PIL import Image
 
 from backend.app.core.config import (
@@ -23,6 +25,30 @@ from backend.app.services.query_refiner import (
 from backend.app.video.frame_index import load_current_frame_index
 from backend.app.video.m16_text_pipeline import TextEvidenceStore
 from backend.app.video.text_evidence import normalize_text
+
+
+def _read_modality_weight(name: str, default: float) -> float:
+    """Read a fusion weight without allowing invalid values into ranking math."""
+    raw_value = os.getenv(name)
+    value_source = str(default) if raw_value is None else raw_value
+    try:
+        value = float(value_source)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be a finite non-negative number") from exc
+    if not math.isfinite(value) or value < 0.0:
+        raise ValueError(f"{name} must be a finite non-negative number")
+    return value
+
+
+def _validated_modality_weight(name: str, value: float) -> float:
+    """Validate plan-provided weights with the same contract as environment weights."""
+    try:
+        numeric_value = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be a finite non-negative number") from exc
+    if not math.isfinite(numeric_value) or numeric_value < 0.0:
+        raise ValueError(f"{name} must be a finite non-negative number")
+    return numeric_value
 
 
 def _match_exact_term(term: str, raw_text: str, norm_text: str) -> bool:
@@ -108,7 +134,10 @@ class ConfiguredSearch:
         if not self.configured:
             return {"ready": False, "reason": "VIDEO_PROCESSED_ROOT is not configured"}
         try:
-            from backend.app.video.frame_index import current_generation_id, validate_generation
+            from backend.app.video.frame_index import (
+                current_generation_id,
+                validate_generation,
+            )
             generation_id = current_generation_id(self.processed_root / "index")
             if not generation_id:
                 return {"ready": False, "reason": "CURRENT index generation is missing"}
@@ -126,9 +155,9 @@ class ConfiguredSearch:
 
     def _search_single_query(self, query, top_k=100):
         self._initialize()
-        vw = float(os.getenv("VISUAL_WEIGHT", "1.0"))
-        ow = float(os.getenv("OCR_WEIGHT", "1.0")) if self.enable_ocr else 0.0
-        aw = float(os.getenv("ASR_WEIGHT", "1.0")) if self.enable_asr else 0.0
+        vw = _read_modality_weight("VISUAL_WEIGHT", 1.0)
+        ow = _read_modality_weight("OCR_WEIGHT", 1.0) if self.enable_ocr else 0.0
+        aw = _read_modality_weight("ASR_WEIGHT", 1.0) if self.enable_asr else 0.0
 
         vector = self._encoder.encode_text([query])[0]
         hits = self._bundle.index.search(vector, max(top_k * 2, 200))
@@ -249,6 +278,9 @@ class ConfiguredSearch:
     def _search_multi_path(self, plan: QueryPlan, top_k: int = 100, rerank: bool = True) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """Executes multi-path visual, lexical, and exact retrieval with rank-safe Reciprocal Rank Fusion."""
         self._initialize()
+        visual_weight = _read_modality_weight("VISUAL_WEIGHT", 1.0)
+        ocr_weight = _read_modality_weight("OCR_WEIGHT", 1.0) if self.enable_ocr else 0.0
+        asr_weight = _read_modality_weight("ASR_WEIGHT", 0.8) if self.enable_asr else 0.0
         t_start = time.perf_counter()
         timings = {
             "visual_vi_ms": 0.0,
@@ -278,6 +310,15 @@ class ConfiguredSearch:
         channel_weights: Dict[str, float] = {}
 
         for idx, vq in enumerate(plan.visual_queries):
+            variant_weight = _validated_modality_weight(
+                f"visual query weight at index {idx}", vq.weight
+            )
+            effective_weight = _validated_modality_weight(
+                f"effective visual query weight at index {idx}",
+                visual_weight * variant_weight,
+            )
+            if effective_weight == 0.0:
+                continue
             t_v = time.perf_counter()
             chan_name = f"{vq.channel}_{idx}" if vq.channel in ("visual_vi", "visual_en") else f"{vq.language}_{idx}"
             vector = self._encoder.encode_text([vq.text])[0]
@@ -296,7 +337,7 @@ class ConfiguredSearch:
                 key = (payload["video_id"], payload["source_frame_index_zero_based"])
                 chan_dict[key] = (float(h["score"]), payload)
             channel_hits[chan_name] = chan_dict
-            channel_weights[chan_name] = vq.weight
+            channel_weights[chan_name] = effective_weight
 
         # 2. Lexical & Exact OCR / ASR retrieval
         exact_terms = [ex.strip() for ex in plan.exact_strings if ex.strip()]
@@ -307,11 +348,11 @@ class ConfiguredSearch:
         # OCR Channel
         t_ocr = time.perf_counter()
         ocr_diagnostics = {
-            "invoked": bool(self.enable_ocr and self._ocr),
+            "invoked": bool(self.enable_ocr and ocr_weight > 0.0 and self._ocr),
             "matched_terms": [],
             "candidate_count": 0,
         }
-        if self.enable_ocr and self._ocr:
+        if self.enable_ocr and ocr_weight > 0.0 and self._ocr:
             ocr_chan: Dict[Tuple[str, int], Tuple[float, Dict[str, Any]]] = {}
             for o in self._ocr:
                 score = 0.0
@@ -345,7 +386,7 @@ class ConfiguredSearch:
                         ocr_chan[key] = (score, payload)
             if ocr_chan:
                 channel_hits["ocr"] = ocr_chan
-                channel_weights["ocr"] = 1.0
+                channel_weights["ocr"] = ocr_weight
             ocr_diagnostics["candidate_count"] = len(ocr_chan)
         timings["lexical_ocr_ms"] = (time.perf_counter() - t_ocr) * 1000.0
         timings["ocr_routing"] = ocr_diagnostics
@@ -353,11 +394,11 @@ class ConfiguredSearch:
         # ASR Channel
         t_asr = time.perf_counter()
         asr_diagnostics = {
-            "invoked": bool(self.enable_asr and self._asr),
+            "invoked": bool(self.enable_asr and asr_weight > 0.0 and self._asr),
             "matched_terms": [],
             "candidate_count": 0,
         }
-        if self.enable_asr and self._asr:
+        if self.enable_asr and asr_weight > 0.0 and self._asr:
             asr_chan: Dict[Tuple[str, int], Tuple[float, Dict[str, Any]]] = {}
             for a in self._asr:
                 if a.start_frame is None:
@@ -391,7 +432,7 @@ class ConfiguredSearch:
                         asr_chan[key] = (score, payload)
             if asr_chan:
                 channel_hits["asr"] = asr_chan
-                channel_weights["asr"] = 0.8
+                channel_weights["asr"] = asr_weight
             asr_diagnostics["candidate_count"] = len(asr_chan)
         timings["lexical_asr_ms"] = (time.perf_counter() - t_asr) * 1000.0
         timings["asr_routing"] = asr_diagnostics
@@ -455,6 +496,14 @@ class ConfiguredSearch:
                 "channels": channels_scores,
                 "image_url": f"/api/frames/{vid}/{filename}",
             })
+
+        fused_results.sort(
+            key=lambda item: (
+                -item["score"],
+                item["video_id"],
+                item["source_frame_index_zero_based"],
+            )
+        )
 
         timings["fusion_ms"] = (time.perf_counter() - t_fus) * 1000.0
 

@@ -74,6 +74,140 @@ def test_cultural_term_preservation():
     assert "chùa" in plan.kept_vi_terms
 
 
+def test_cultural_terms_require_whole_phrase_matches():
+    parser = DeterministicQueryParser()
+
+    action_plan = parser.parse("người đàn ông chèo thuyền trên sông")
+    assert "chè" not in action_plan.kept_vi_terms
+    assert "chè" not in action_plan.lexical_terms
+
+    food_plan = parser.parse("người ngồi ăn chè trong quán")
+    assert "chè" in food_plan.kept_vi_terms
+    assert "chè" in food_plan.lexical_terms
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "xe máy có biển số màu trắng",
+        "cửa hàng có biển quảng cáo lớn",
+        "người đứng cạnh biển báo giao thông",
+    ],
+)
+def test_polysemous_compounds_do_not_emit_unrelated_object(query):
+    plan = DeterministicQueryParser().parse(query)
+    assert "sea" not in plan.objects
+
+
+def test_standalone_object_meaning_is_still_extracted():
+    plan = DeterministicQueryParser().parse("thuyền đánh cá trên biển")
+    assert "sea" in plan.objects
+
+
+def test_object_extraction_prefers_specific_compound():
+    plan = DeterministicQueryParser().parse("xe lam chạy trên đường")
+    assert "auto rickshaw" in plan.objects
+    assert "vehicle" not in plan.objects
+
+
+def test_visual_query_keeps_semantic_focus_without_search_or_ocr_instructions():
+    query = "Hãy tìm đoạn video có người mặc áo đỏ mang biển số 51A-12345 đi trên đường"
+    plan = DeterministicQueryParser().parse(query)
+    visual_text = plan.visual_queries[0].text.casefold()
+
+    assert visual_text == "người mặc áo đỏ đi trên đường"
+    assert "51a-12345" in [term.casefold() for term in plan.exact_strings]
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("Tìm kiếm cảnh sát đang điều tiết giao thông", "cảnh sát đang điều tiết giao thông"),
+        ("Tìm phim trường ngoài trời", "phim trường ngoài trời"),
+        ("Xác định cảnh quan miền núi", "cảnh quan miền núi"),
+    ],
+)
+def test_search_intent_does_not_consume_prefix_of_semantic_word(query, expected):
+    plan = DeterministicQueryParser().parse(query)
+    assert plan.visual_queries[0].text == expected
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("Hãy tìm đoạn video có người chạy trong công viên", "người chạy trong công viên"),
+        ("Tìm cảnh có xe dừng bên đường", "xe dừng bên đường"),
+        ("Xác định khung hình cho thấy một tòa nhà", "một tòa nhà"),
+    ],
+)
+def test_search_intent_strips_complete_media_phrase(query, expected):
+    plan = DeterministicQueryParser().parse(query)
+    assert plan.visual_queries[0].text == expected
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "mã ART cạnh biển hiệu ArtHouse",
+        "mã RED cạnh khu rừng Redwood",
+        "dòng chữ \"ART\" bên cạnh ArtHouse",
+    ],
+)
+def test_exact_removal_preserves_larger_words_and_names(query):
+    plan = DeterministicQueryParser().parse(query)
+    visual_text = plan.visual_queries[0].text.casefold()
+
+    assert "arthouse" in visual_text or "redwood" in visual_text
+    assert any(term in {"ART", "RED"} for term in plan.exact_strings)
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ('Tìm người đứng trước ArtHouse với dòng chữ "ART"', "người đứng trước ArtHouse"),
+        ("Tìm xe mang biển số: “51A-12345” chạy trên đường", "xe chạy trên đường"),
+        ("Tìm thiết bị có mã 'ZX-90' đặt trên bàn", "thiết bị đặt trên bàn"),
+        ("Tìm biển hiệu hiển thị dòng chữ OPEN", "biển hiệu"),
+    ],
+)
+def test_quoted_labelled_exact_removes_complete_text_constraint(query, expected):
+    plan = DeterministicQueryParser().parse(query)
+
+    assert plan.visual_queries[0].text == expected
+    assert plan.exact_strings
+
+
+def test_text_label_without_exact_value_is_not_removed_as_dangling():
+    plan = DeterministicQueryParser().parse("người đứng cạnh biển số")
+    assert plan.visual_queries[0].text == "người đứng cạnh biển số"
+
+
+def test_qa_visual_query_removes_question_scaffolding():
+    parser = DeterministicQueryParser()
+    cases = {
+        "Có bao nhiêu chiếc xe máy xuất hiện trong đoạn phim?": "chiếc xe máy",
+        "Chiếc ô có màu gì?": "chiếc ô",
+        "Người công nhân đang làm gì trong nhà kho?": "người công nhân trong nhà kho",
+        "Ai đang hát trên sân khấu?": "người đang hát trên sân khấu",
+        "Người phát biểu đang nói về chủ đề gì?": "người phát biểu",
+    }
+
+    for query, expected in cases.items():
+        plan = parser.parse(query, task_type="qa")
+        assert plan.visual_queries[0].text.casefold() == expected
+
+
+def test_qa_who_rewrite_preserves_title_case_proper_noun():
+    parser = DeterministicQueryParser()
+
+    proper_noun_plan = parser.parse("Ai Cập có các kim tự tháp nào?", task_type="qa")
+    assert proper_noun_plan.visual_queries[0].text.startswith("Ai Cập")
+    assert not proper_noun_plan.visual_queries[0].text.startswith("người Cập")
+
+    wh_plan = parser.parse("Ai đang hát trên sân khấu?", task_type="qa")
+    assert wh_plan.visual_queries[0].text.casefold() == "người đang hát trên sân khấu"
+
+
 # =========================================================================
 # Test D: No Hallucination
 # =========================================================================
@@ -332,5 +466,3 @@ def test_section5_query_refiner_test_set():
     assert "toyota" not in all_terms and "honda" not in all_terms
     assert "hà nội" not in all_terms and "sài gòn" not in all_terms
     assert not p_d.exact_strings
-
-

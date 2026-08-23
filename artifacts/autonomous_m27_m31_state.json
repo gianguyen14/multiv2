@@ -1,0 +1,13 @@
+{
+  "active_scope": "3_videos_only",
+  "videos": ["L22_V001.mp4", "L22_V002.mp4", "L22_V003.mp4"],
+  "gt_hash": "c5afd80cf58f033675ed454c1441a61908291c6d81c06304301ee1c0a842e5d5",
+  "milestones": {
+    "M27": {"status": "COMPLETED", "baseline_saved": true},
+    "M28": {"status": "COMPLETED", "baseline_saved": true},
+    "M29": {"status": "COMPLETED", "baseline_saved": true},
+    "M30": {"status": "COMPLETED", "baseline_saved": true},
+    "M31": {"status": "COMPLETED", "report_saved": true}
+  },
+  "final_verdict": "READY"
+}

@@ -1,0 +1,124 @@
+{
+  "corpus": {
+    "video_count": 31,
+    "total_duration_seconds": 36707.42667000001,
+    "videos": [
+      "L22_V001",
+      "L22_V002",
+      "L22_V003",
+      "L22_V004",
+      "L22_V005",
+      "L22_V006",
+      "L22_V007",
+      "L22_V008",
+      "L22_V009",
+      "L22_V010",
+      "L22_V011",
+      "L22_V012",
+      "L22_V013",
+      "L22_V014",
+      "L22_V015",
+      "L22_V016",
+      "L22_V017",
+      "L22_V018",
+      "L22_V019",
+      "L22_V020",
+      "L22_V021",
+      "L22_V022",
+      "L22_V023",
+      "L22_V024",
+      "L22_V025",
+      "L22_V026",
+      "L22_V027",
+      "L22_V028",
+      "L22_V029",
+      "L22_V030",
+      "L22_V031"
+    ]
+  },
+  "projections": {
+    "legacy_1s": {
+      "interval": 1.0,
+      "global_frames": 36724,
+      "reduction_pct": 0.0
+    },
+    "candidate_a_3s": {
+      "interval": 3.0,
+      "global_frames": 12249,
+      "reduction_pct": 66.6457902189304
+    },
+    "candidate_b_5s": {
+      "interval": 5.0,
+      "global_frames": 7358,
+      "reduction_pct": 79.964056203028
+    }
+  },
+  "empirical_dedup_subset": {
+    "(3.0, 0.96)": {
+      "subset_videos": 3,
+      "legacy_subset_frames": 3578,
+      "sparse_candidates": 1193,
+      "retained_after_dedup": 1005,
+      "removed_by_dedup": 188,
+      "dedup_removal_pct": 15.758591785414922,
+      "total_reduction_vs_legacy_subset": 71.91168250419229
+    },
+    "(3.0, 0.97)": {
+      "subset_videos": 3,
+      "legacy_subset_frames": 3578,
+      "sparse_candidates": 1193,
+      "retained_after_dedup": 1067,
+      "removed_by_dedup": 126,
+      "dedup_removal_pct": 10.561609388097237,
+      "total_reduction_vs_legacy_subset": 70.17887087758524
+    },
+    "(3.0, 0.98)": {
+      "subset_videos": 3,
+      "legacy_subset_frames": 3578,
+      "sparse_candidates": 1193,
+      "retained_after_dedup": 1132,
+      "removed_by_dedup": 61,
+      "dedup_removal_pct": 5.1131601005867555,
+      "total_reduction_vs_legacy_subset": 68.36221352711011
+    },
+    "(5.0, 0.96)": {
+      "subset_videos": 3,
+      "legacy_subset_frames": 3578,
+      "sparse_candidates": 717,
+      "retained_after_dedup": 639,
+      "removed_by_dedup": 78,
+      "dedup_removal_pct": 10.878661087866103,
+      "total_reduction_vs_legacy_subset": 82.14086081609838
+    },
+    "(5.0, 0.97)": {
+      "subset_videos": 3,
+      "legacy_subset_frames": 3578,
+      "sparse_candidates": 717,
+      "retained_after_dedup": 657,
+      "removed_by_dedup": 60,
+      "dedup_removal_pct": 8.368200836820083,
+      "total_reduction_vs_legacy_subset": 81.63778647288989
+    },
+    "(5.0, 0.98)": {
+      "subset_videos": 3,
+      "legacy_subset_frames": 3578,
+      "sparse_candidates": 717,
+      "retained_after_dedup": 682,
+      "removed_by_dedup": 35,
+      "dedup_removal_pct": 4.881450488145045,
+      "total_reduction_vs_legacy_subset": 80.93907210732253
+    }
+  },
+  "local_refinement_bounds": {
+    "max_regions": 5,
+    "window_seconds": 10.0,
+    "interval_seconds": 0.5,
+    "max_timestamps_per_query": 205,
+    "real_latency": "NOT MEASURED (deferred due to 4GB RAM policy)",
+    "real_quality": "NOT MEASURED (deferred due to 4GB RAM policy)"
+  },
+  "quality_status": {
+    "trusted_gt_available": false,
+    "reason": "Production 873-video corpus and trusted frame annotations not present locally; evaluation deferred"
+  }
+}

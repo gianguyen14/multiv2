@@ -1,0 +1,200 @@
+{
+  "version": "1.0.0",
+  "step": "STEP 1 \u2014 Capture Legacy Baseline",
+  "git": {
+    "branch": "main (feature/kis-dense-refinement-v2)",
+    "head": "2e2a9ceecbaed197de4f63b1c22856cc219fb1ae",
+    "status": "clean tracking, 9 modified core files preserved"
+  },
+  "corpus": {
+    "raw_corpus_path": "/home/nguyen/T\u00e0i li\u1ec7u/Project/data/test-videos",
+    "video_count": 31,
+    "unique_video_ids": [
+      "L22_V001",
+      "L22_V002",
+      "L22_V003",
+      "L22_V004",
+      "L22_V005",
+      "L22_V006",
+      "L22_V007",
+      "L22_V008",
+      "L22_V009",
+      "L22_V010",
+      "L22_V011",
+      "L22_V012",
+      "L22_V013",
+      "L22_V014",
+      "L22_V015",
+      "L22_V016",
+      "L22_V017",
+      "L22_V018",
+      "L22_V019",
+      "L22_V020",
+      "L22_V021",
+      "L22_V022",
+      "L22_V023",
+      "L22_V024",
+      "L22_V025",
+      "L22_V026",
+      "L22_V027",
+      "L22_V028",
+      "L22_V029",
+      "L22_V030",
+      "L22_V031"
+    ],
+    "total_raw_bytes": 4154529806,
+    "total_raw_gib": 3.8692,
+    "total_raw_mb": 3962.07,
+    "extension_distribution": {
+      ".mp4": 31
+    },
+    "min_video_id": "L22_V001",
+    "max_video_id": "L22_V031",
+    "total_duration_seconds": 36707.43,
+    "total_duration_hours": 10.2
+  },
+  "legacy_sampling": {
+    "implementation_class": "backend.app.video.frame_sampler.iter_sample_frames",
+    "pipeline_class": "backend.app.video.m15_ingestion_pipeline.VideoIngestionPipeline",
+    "config_class": "backend.app.config.video_ingest_config.VideoIngestConfig",
+    "sampling_rule": "Fixed time interval (sample_interval_seconds=1.0s, equivalent to 1.0 FPS uniform temporal sampling)",
+    "sampling_mode": "time-based uniform sampling nearest to target second ordinals",
+    "shot_integration": "None (shot detection is not integrated into visual frame sampling)",
+    "duplicate_filtering": "None (all sampled 1.0s frames are indexed regardless of visual cosine similarity)",
+    "sample_interval_seconds": 1.0,
+    "jpeg_quality": 90,
+    "frame_format": "jpg"
+  },
+  "frame_counts": {
+    "active_processed_index": {
+      "processed_root": "data/processed-validation/m27-representative-12-videos",
+      "generation_id": "gen-af90ddd46e7649acae805307a71683c6",
+      "video_count": 12,
+      "total_indexed_vectors": 13981,
+      "mean_vectors_per_video": 1165.08,
+      "median_vectors_per_video": 1176.0,
+      "min_vectors_per_video": 1041,
+      "max_vectors_per_video": 1305,
+      "top_5_highest_vectors": [
+        {
+          "video_id": "L22_V004",
+          "vectors": 1305
+        },
+        {
+          "video_id": "L22_V006",
+          "vectors": 1287
+        },
+        {
+          "video_id": "L22_V003",
+          "vectors": 1226
+        },
+        {
+          "video_id": "L22_V012",
+          "vectors": 1205
+        },
+        {
+          "video_id": "L22_V007",
+          "vectors": 1202
+        }
+      ],
+      "top_5_lowest_vectors": [
+        {
+          "video_id": "L22_V005",
+          "vectors": 1041
+        },
+        {
+          "video_id": "L22_V009",
+          "vectors": 1078
+        },
+        {
+          "video_id": "L22_V010",
+          "vectors": 1092
+        },
+        {
+          "video_id": "L22_V008",
+          "vectors": 1096
+        },
+        {
+          "video_id": "L22_V011",
+          "vectors": 1097
+        }
+      ]
+    },
+    "full_31_video_corpus_projection": {
+      "total_estimated_legacy_vectors": 36724,
+      "mean_estimated_vectors_per_video": 1184.65,
+      "median_estimated_vectors_per_video": 1164.0,
+      "min_estimated_vectors": 1034,
+      "max_estimated_vectors": 1437
+    }
+  },
+  "storage": {
+    "index_generation_path": "data/processed-validation/m27-representative-12-videos/index/generations/gen-af90ddd46e7649acae805307a71683c6",
+    "faiss_file_bytes": 42949677,
+    "faiss_file_mb": 40.96,
+    "payloads_file_bytes": 8383860,
+    "payloads_file_mb": 8.0,
+    "mapping_file_bytes": 478279,
+    "mapping_file_mb": 0.46,
+    "total_index_generation_bytes": 51812479,
+    "total_index_generation_mb": 49.41,
+    "total_processed_root_bytes": 2333588471,
+    "total_processed_root_mb": 2225.48,
+    "total_processed_root_gib": 2.17
+  },
+  "temporal_density": {
+    "active_12_videos": {
+      "mean_frames_per_minute": 60.03,
+      "median_frames_per_minute": 60.03,
+      "min_frames_per_minute": 60.01,
+      "max_frames_per_minute": 60.05,
+      "average_sampling_interval_seconds": 0.9994
+    },
+    "full_31_videos_projection": {
+      "mean_frames_per_minute": 60.03,
+      "median_frames_per_minute": 60.03,
+      "min_frames_per_minute": 60.0,
+      "max_frames_per_minute": 60.05,
+      "average_sampling_interval_seconds": 0.9995
+    }
+  },
+  "shot_statistics": {
+    "status": "not measurable from current metadata",
+    "details": "TransNetV2Adapter exists in backend.app.shot_detection.base, but shot detection is disabled during ingestion and no shot boundaries are stored in active generation metadata."
+  },
+  "duplicate_similarity": {
+    "total_consecutive_frame_pairs": 13969,
+    "similarity_min": 0.3894,
+    "similarity_p25": 0.8791,
+    "similarity_p50": 0.954,
+    "similarity_mean": 0.91,
+    "similarity_p75": 0.9758,
+    "similarity_p90": 0.9848,
+    "similarity_p95": 0.9889,
+    "similarity_p99": 0.9958,
+    "similarity_max": 1.0,
+    "proportion_ge_0_96": 0.444,
+    "count_ge_0_96": 6202,
+    "proportion_ge_0_97": 0.3322,
+    "count_ge_0_97": 4641,
+    "proportion_ge_0_98": 0.1831,
+    "count_ge_0_98": 2558,
+    "proportion_ge_0_99": 0.0394,
+    "count_ge_0_99": 551
+  },
+  "retrieval": {
+    "query_count": 20,
+    "latency_min_ms": 414.67,
+    "latency_mean_ms": 1052.39,
+    "latency_p50_ms": 534.01,
+    "latency_p90_ms": 1487.15,
+    "latency_p95_ms": 2525.91,
+    "latency_max_ms": 6611.98,
+    "ground_truth_status": "GT unavailable \u2014 quality metrics not computed",
+    "concentration": {
+      "mean_hhi": 0.1055,
+      "mean_top1_share": 0.1705,
+      "mean_top3_share": 0.42
+    }
+  }
+}

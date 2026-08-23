@@ -1,0 +1,1154 @@
+{
+  "kis": [
+    {
+      "query": "cảnh quay từ trên cao của một pháo đài hình ngôi sao được bao quanh bởi hào nước",
+      "target_video": "L22_V001",
+      "intervals": [
+        [
+          6750,
+          7050
+        ]
+      ],
+      "modality": "visual",
+      "rank": 13,
+      "correct_video_rank": 1,
+      "r1": false,
+      "r5": false,
+      "r20": true,
+      "r50": true,
+      "r100": true,
+      "correct_video": true,
+      "top1_pred": {
+        "video_id": "L22_V001",
+        "frame_id": 19950,
+        "source_frame_index_zero_based": 19950,
+        "frame_uid": "L22_V001:000019950",
+        "timestamp_seconds": 665.0,
+        "visual_score": 0.04844612255692482,
+        "ocr_score": 0.0,
+        "asr_score": 0.0,
+        "score": 1.0,
+        "image_url": "/api/frames/L22_V001/000019950.jpg"
+      }
+    },
+    {
+      "query": "nhân viên cứu hộ đội mũ bảo hiểm màu cam đang đu dây xuống một hố sâu",
+      "target_video": "L22_V001",
+      "intervals": [
+        [
+          21900,
+          22260
+        ]
+      ],
+      "modality": "visual",
+      "rank": 93,
+      "correct_video_rank": 1,
+      "r1": false,
+      "r5": false,
+      "r20": false,
+      "r50": false,
+      "r100": true,
+      "correct_video": true,
+      "top1_pred": {
+        "video_id": "L22_V001",
+        "frame_id": 11220,
+        "source_frame_index_zero_based": 11220,
+        "frame_uid": "L22_V001:000011220",
+        "timestamp_seconds": 374.0,
+        "visual_score": 0.05176156386733055,
+        "ocr_score": 0.0625,
+        "asr_score": 0.0,
+        "score": 1.09375,
+        "image_url": "/api/frames/L22_V001/000011220.jpg"
+      }
+    },
+    {
+      "query": "đám cháy lớn bùng phát dữ dội tại một nhà xưởng",
+      "target_video": "L22_V001",
+      "intervals": [
+        [
+          25950,
+          27000
+        ]
+      ],
+      "modality": "visual",
+      "rank": -1,
+      "correct_video_rank": 5,
+      "r1": false,
+      "r5": false,
+      "r20": false,
+      "r50": false,
+      "r100": false,
+      "correct_video": true,
+      "top1_pred": {
+        "video_id": "L22_V002",
+        "frame_id": 14525,
+        "source_frame_index_zero_based": 14525,
+        "frame_uid": "L22_V002:000014525",
+        "timestamp_seconds": 581.0,
+        "visual_score": 0.046335555613040924,
+        "ocr_score": 0.1,
+        "asr_score": 0.1,
+        "score": 1.1484921043086564,
+        "image_url": "/api/frames/L22_V002/000014525.jpg"
+      }
+    },
+    {
+      "query": "một người đàn ông chống đẩy trên đường chạy điền kinh",
+      "target_video": "L22_V001",
+      "intervals": [
+        [
+          29600,
+          31400
+        ]
+      ],
+      "modality": "visual",
+      "rank": 25,
+      "correct_video_rank": 1,
+      "r1": false,
+      "r5": false,
+      "r20": false,
+      "r50": true,
+      "r100": true,
+      "correct_video": true,
+      "top1_pred": {
+        "video_id": "L22_V001",
+        "frame_id": 24450,
+        "source_frame_index_zero_based": 24450,
+        "frame_uid": "L22_V001:000024450",
+        "timestamp_seconds": 815.0,
+        "visual_score": 0.07171285897493362,
+        "ocr_score": 0.0,
+        "asr_score": 0.2,
+        "score": 1.3,
+        "image_url": "/api/frames/L22_V001/000024450.jpg"
+      }
+    },
+    {
+      "query": "một người mặc bộ đồ mocap uốn cong người về phía sau trên nền xanh",
+      "target_video": "L22_V002",
+      "intervals": [
+        [
+          11600,
+          11900
+        ]
+      ],
+      "modality": "visual",
+      "rank": 99,
+      "correct_video_rank": 6,
+      "r1": false,
+      "r5": false,
+      "r20": false,
+      "r50": false,
+      "r100": true,
+      "correct_video": true,
+      "top1_pred": {
+        "video_id": "L22_V003",
+        "frame_id": 11925,
+        "source_frame_index_zero_based": 11925,
+        "frame_uid": "L22_V003:000011925",
+        "timestamp_seconds": 477.0,
+        "visual_score": 0.037481073290109634,
+        "ocr_score": 0.0,
+        "asr_score": 0.07692307692307693,
+        "score": 1.1153846153846154,
+        "image_url": "/api/frames/L22_V003/000011925.jpg"
+      }
+    },
+    {
+      "query": "thuyền bị lật hoặc chìm một nửa trên sông, có xuồng cứu hộ xung quanh",
+      "target_video": "L22_V002",
+      "intervals": [
+        [
+          24500,
+          24850
+        ]
+      ],
+      "modality": "visual",
+      "rank": 65,
+      "correct_video_rank": 1,
+      "r1": false,
+      "r5": false,
+      "r20": false,
+      "r50": false,
+      "r100": true,
+      "correct_video": true,
+      "top1_pred": {
+        "video_id": "L22_V002",
+        "frame_id": 10400,
+        "source_frame_index_zero_based": 10400,
+        "frame_uid": "L22_V002:000010400",
+        "timestamp_seconds": 416.0,
+        "visual_score": 0.06023236736655235,
+        "ocr_score": 0.0,
+        "asr_score": 0.07692307692307693,
+        "score": 1.0593737843683664,
+        "image_url": "/api/frames/L22_V002/000010400.jpg"
+      }
+    },
+    {
+      "query": "một vệt lửa dài bùng cháy trên cánh đồng hoặc sườn đồi vào lúc chạng vạng",
+      "target_video": "L22_V003",
+      "intervals": [
+        [
+          15750,
+          16100
+        ]
+      ],
+      "modality": "visual",
+      "rank": -1,
+      "correct_video_rank": 34,
+      "r1": false,
+      "r5": false,
+      "r20": false,
+      "r50": false,
+      "r100": false,
+      "correct_video": true,
+      "top1_pred": {
+        "video_id": "L22_V001",
+        "frame_id": 13500,
+        "source_frame_index_zero_based": 13500,
+        "frame_uid": "L22_V001:000013500",
+        "timestamp_seconds": 450.0,
+        "visual_score": 0.05836709588766098,
+        "ocr_score": 0.0,
+        "asr_score": 0.0,
+        "score": 1.0,
+        "image_url": "/api/frames/L22_V001/000013500.jpg"
+      }
+    },
+    {
+      "query": "đám đông du khách đi bộ trên con đường lát đá hướng lên khu di tích hoặc đền chùa",
+      "target_video": "L22_V003",
+      "intervals": [
+        [
+          20650,
+          21000
+        ]
+      ],
+      "modality": "visual",
+      "rank": -1,
+      "correct_video_rank": 9,
+      "r1": false,
+      "r5": false,
+      "r20": false,
+      "r50": false,
+      "r100": false,
+      "correct_video": true,
+      "top1_pred": {
+        "video_id": "L22_V001",
+        "frame_id": 6180,
+        "source_frame_index_zero_based": 6180,
+        "frame_uid": "L22_V001:000006180",
+        "timestamp_seconds": 206.0,
+        "visual_score": 0.022193964570760727,
+        "ocr_score": 0.0,
+        "asr_score": 0.0,
+        "score": 1.0,
+        "image_url": "/api/frames/L22_V001/000006180.jpg"
+      }
+    },
+    {
+      "query": "Bảng điện tử hiển thị Vietnam Airlines Nhóm 1 Nhóm 2 tại sân bay",
+      "target_video": "L22_V003",
+      "intervals": [
+        [
+          8400,
+          8750
+        ]
+      ],
+      "modality": "ocr",
+      "rank": -1,
+      "correct_video_rank": 1,
+      "r1": false,
+      "r5": false,
+      "r20": false,
+      "r50": false,
+      "r100": false,
+      "correct_video": true,
+      "top1_pred": {
+        "video_id": "L22_V003",
+        "frame_id": 18575,
+        "source_frame_index_zero_based": 18575,
+        "frame_uid": "L22_V003:000018575",
+        "timestamp_seconds": 743.0,
+        "visual_score": 0.03399740904569626,
+        "ocr_score": 0.07692307692307693,
+        "asr_score": 0.15384615384615385,
+        "score": 1.1883434758846458,
+        "image_url": "/api/frames/L22_V003/000018575.jpg"
+      }
+    },
+    {
+      "query": "bệnh nhân bị thuyên tắc phổi cấp",
+      "target_video": "L22_V002",
+      "intervals": [
+        [
+          5400,
+          5600
+        ]
+      ],
+      "modality": "ocr",
+      "rank": 34,
+      "correct_video_rank": 1,
+      "r1": false,
+      "r5": false,
+      "r20": false,
+      "r50": true,
+      "r100": true,
+      "correct_video": true,
+      "top1_pred": {
+        "video_id": "L22_V002",
+        "frame_id": 10375,
+        "source_frame_index_zero_based": 10375,
+        "frame_uid": "L22_V002:000010375",
+        "timestamp_seconds": 415.0,
+        "visual_score": 0.04563048109412193,
+        "ocr_score": 0.0,
+        "asr_score": 0.14285714285714285,
+        "score": 1.0207011364641219,
+        "image_url": "/api/frames/L22_V002/000010375.jpg"
+      }
+    },
+    {
+      "query": "cháy rừng dữ dội ở Bolivia",
+      "target_video": "L22_V003",
+      "intervals": [
+        [
+          12600,
+          16500
+        ]
+      ],
+      "modality": "ocr",
+      "rank": 1,
+      "correct_video_rank": 1,
+      "r1": true,
+      "r5": true,
+      "r20": true,
+      "r50": true,
+      "r100": true,
+      "correct_video": true,
+      "top1_pred": {
+        "video_id": "L22_V003",
+        "frame_id": 12725,
+        "source_frame_index_zero_based": 12725,
+        "frame_uid": "L22_V003:000012725",
+        "timestamp_seconds": 509.0,
+        "visual_score": 0.0,
+        "ocr_score": 1.0,
+        "asr_score": 0.2,
+        "score": 1.8,
+        "image_url": "/api/frames/L22_V003/000012725.jpg"
+      }
+    },
+    {
+      "query": "nhiệt độ đạt 40 độ C",
+      "target_video": "L22_V001",
+      "intervals": [
+        [
+          700,
+          950
+        ],
+        [
+          10500,
+          11000
+        ]
+      ],
+      "modality": "asr",
+      "rank": 1,
+      "correct_video_rank": 1,
+      "r1": true,
+      "r5": true,
+      "r20": true,
+      "r50": true,
+      "r100": true,
+      "correct_video": true,
+      "top1_pred": {
+        "video_id": "L22_V001",
+        "frame_id": 750,
+        "source_frame_index_zero_based": 750,
+        "frame_uid": "L22_V001:000000750",
+        "timestamp_seconds": 25.0,
+        "visual_score": 0.0,
+        "ocr_score": 0.8,
+        "asr_score": 0.8,
+        "score": 2.4000000000000004,
+        "image_url": "/api/frames/L22_V001/000000750.jpg"
+      }
+    },
+    {
+      "query": "khởi công dự án cải tạo đền thờ Nguyễn Hữu Cảnh",
+      "target_video": "L22_V001",
+      "intervals": [
+        [
+          300,
+          600
+        ],
+        [
+          1100,
+          1800
+        ]
+      ],
+      "modality": "asr",
+      "rank": 1,
+      "correct_video_rank": 1,
+      "r1": true,
+      "r5": true,
+      "r20": true,
+      "r50": true,
+      "r100": true,
+      "correct_video": true,
+      "top1_pred": {
+        "video_id": "L22_V001",
+        "frame_id": 450,
+        "source_frame_index_zero_based": 450,
+        "frame_uid": "L22_V001:000000450",
+        "timestamp_seconds": 15.0,
+        "visual_score": 0.0,
+        "ocr_score": 0.8181818181818182,
+        "asr_score": 0.7272727272727273,
+        "score": 2.3181818181818183,
+        "image_url": "/api/frames/L22_V001/000000450.jpg"
+      }
+    },
+    {
+      "query": "thiếu niên nghiện smartphone có nguy cơ trầm cảm",
+      "target_video": "L22_V002",
+      "intervals": [
+        [
+          550,
+          700
+        ],
+        [
+          12600,
+          13200
+        ]
+      ],
+      "modality": "asr",
+      "rank": 1,
+      "correct_video_rank": 1,
+      "r1": true,
+      "r5": true,
+      "r20": true,
+      "r50": true,
+      "r100": true,
+      "correct_video": true,
+      "top1_pred": {
+        "video_id": "L22_V002",
+        "frame_id": 625,
+        "source_frame_index_zero_based": 625,
+        "frame_uid": "L22_V002:000000625",
+        "timestamp_seconds": 25.0,
+        "visual_score": 0.0,
+        "ocr_score": 0.375,
+        "asr_score": 0.875,
+        "score": 1.875,
+        "image_url": "/api/frames/L22_V002/000000625.jpg"
+      }
+    },
+    {
+      "query": "hỗ trợ thả rùa biển về tự nhiên",
+      "target_video": "L22_V001",
+      "intervals": [
+        [
+          8500,
+          9700
+        ]
+      ],
+      "modality": "asr",
+      "rank": 18,
+      "correct_video_rank": 2,
+      "r1": false,
+      "r5": false,
+      "r20": true,
+      "r50": true,
+      "r100": true,
+      "correct_video": true,
+      "top1_pred": {
+        "video_id": "L22_V002",
+        "frame_id": 13675,
+        "source_frame_index_zero_based": 13675,
+        "frame_uid": "L22_V002:000013675",
+        "timestamp_seconds": 547.0,
+        "visual_score": 0.05558130145072937,
+        "ocr_score": 0.5,
+        "asr_score": 0.0,
+        "score": 1.4840890058796035,
+        "image_url": "/api/frames/L22_V002/000013675.jpg"
+      }
+    },
+    {
+      "query": "khai mạc ngày hội việc làm dành cho các bác sĩ trẻ",
+      "target_video": "L22_V002",
+      "intervals": [
+        [
+          250,
+          600
+        ],
+        [
+          1000,
+          2900
+        ]
+      ],
+      "modality": "asr",
+      "rank": 1,
+      "correct_video_rank": 1,
+      "r1": true,
+      "r5": true,
+      "r20": true,
+      "r50": true,
+      "r100": true,
+      "correct_video": true,
+      "top1_pred": {
+        "video_id": "L22_V002",
+        "frame_id": 400,
+        "source_frame_index_zero_based": 400,
+        "frame_uid": "L22_V002:000000400",
+        "timestamp_seconds": 16.0,
+        "visual_score": 0.029627567157149315,
+        "ocr_score": 0.0,
+        "asr_score": 0.5,
+        "score": 1.2050075381766079,
+        "image_url": "/api/frames/L22_V002/000000400.jpg"
+      }
+    },
+    {
+      "query": "bầu cử tổng thống Mỹ tại Đảng Dân chủ",
+      "target_video": "L22_V003",
+      "intervals": [
+        [
+          12400,
+          12750
+        ],
+        [
+          13500,
+          14500
+        ]
+      ],
+      "modality": "asr",
+      "rank": 3,
+      "correct_video_rank": 1,
+      "r1": false,
+      "r5": true,
+      "r20": true,
+      "r50": true,
+      "r100": true,
+      "correct_video": true,
+      "top1_pred": {
+        "video_id": "L22_V003",
+        "frame_id": 13475,
+        "source_frame_index_zero_based": 13475,
+        "frame_uid": "L22_V003:000013475",
+        "timestamp_seconds": 539.0,
+        "visual_score": 0.03662228211760521,
+        "ocr_score": 0.1111111111111111,
+        "asr_score": 0.4444444444444444,
+        "score": 1.435135362904567,
+        "image_url": "/api/frames/L22_V003/000013475.jpg"
+      }
+    },
+    {
+      "query": "cận cảnh tay cầm điện thoại thông minh hiển thị menu tiếng Anh có chữ Explore và Currency",
+      "target_video": "L22_V003",
+      "intervals": [
+        [
+          17000,
+          17300
+        ]
+      ],
+      "modality": "mixed",
+      "rank": 1,
+      "correct_video_rank": 1,
+      "r1": true,
+      "r5": true,
+      "r20": true,
+      "r50": true,
+      "r100": true,
+      "correct_video": true,
+      "top1_pred": {
+        "video_id": "L22_V003",
+        "frame_id": 17200,
+        "source_frame_index_zero_based": 17200,
+        "frame_uid": "L22_V003:000017200",
+        "timestamp_seconds": 688.0,
+        "visual_score": 0.035677626729011536,
+        "ocr_score": 0.0,
+        "asr_score": 0.0625,
+        "score": 1.09375,
+        "image_url": "/api/frames/L22_V003/000017200.jpg"
+      }
+    },
+    {
+      "query": "người phụ nữ mặc váy trắng đeo vương miện bế em bé đứng cạnh người đàn ông mặc quân phục",
+      "target_video": "L22_V001",
+      "intervals": [
+        [
+          13650,
+          13950
+        ]
+      ],
+      "modality": "mixed",
+      "rank": 54,
+      "correct_video_rank": 1,
+      "r1": false,
+      "r5": false,
+      "r20": false,
+      "r50": false,
+      "r100": true,
+      "correct_video": true,
+      "top1_pred": {
+        "video_id": "L22_V001",
+        "frame_id": 15690,
+        "source_frame_index_zero_based": 15690,
+        "frame_uid": "L22_V001:000015690",
+        "timestamp_seconds": 523.0,
+        "visual_score": 0.08684896677732468,
+        "ocr_score": 0.0,
+        "asr_score": 0.0,
+        "score": 1.0,
+        "image_url": "/api/frames/L22_V001/000015690.jpg"
+      }
+    }
+  ],
+  "qa_positive": [
+    {
+      "question": "Dự án cải tạo đền thờ nào đang được khởi công?",
+      "decomposed_query": "Dự án cải tạo đền thờ đang được khởi công",
+      "target_video": "L22_V001",
+      "intervals": [
+        [
+          300,
+          600
+        ],
+        [
+          1100,
+          1800
+        ]
+      ],
+      "accepted_answers": [
+        "Nguyễn Hữu Cảnh",
+        "đền thờ Nguyễn Hữu Cảnh",
+        "Lễ Thành Hầu Nguyễn Hữu Cảnh"
+      ],
+      "modality": "asr",
+      "predicted_answer": "Nguyễn Hữu Cảnh",
+      "predicted_video": "L22_V001",
+      "predicted_frame": 450,
+      "localization_hit": true,
+      "answer_hit": true,
+      "full_condition": true,
+      "abstained": false
+    },
+    {
+      "question": "Nhiệt độ đạt bao nhiêu độ C?",
+      "decomposed_query": "Nhiệt độ đạt độ C",
+      "target_video": "L22_V001",
+      "intervals": [
+        [
+          700,
+          950
+        ],
+        [
+          10500,
+          11000
+        ]
+      ],
+      "accepted_answers": [
+        "40",
+        "40 độ C",
+        "40 độ"
+      ],
+      "modality": "asr",
+      "predicted_answer": "40 ĐỘ C",
+      "predicted_video": "L22_V001",
+      "predicted_frame": 750,
+      "localization_hit": true,
+      "answer_hit": true,
+      "full_condition": true,
+      "abstained": false
+    },
+    {
+      "question": "Thiếu niên nghiện smartphone dễ bị bệnh gì?",
+      "decomposed_query": "Thiếu niên nghiện smartphone dễ bị bệnh",
+      "target_video": "L22_V002",
+      "intervals": [
+        [
+          550,
+          700
+        ],
+        [
+          12600,
+          13200
+        ]
+      ],
+      "accepted_answers": [
+        "rối loạn lo âu và trầm cảm",
+        "trầm cảm",
+        "lo âu",
+        "lo âu và trầm cảm"
+      ],
+      "modality": "asr",
+      "predicted_answer": "trầm cảm",
+      "predicted_video": "L22_V002",
+      "predicted_frame": 625,
+      "localization_hit": true,
+      "answer_hit": true,
+      "full_condition": true,
+      "abstained": false
+    },
+    {
+      "question": "Cháy rừng dữ dội xảy ra ở đâu?",
+      "decomposed_query": "Cháy rừng dữ dội xảy ra",
+      "target_video": "L22_V003",
+      "intervals": [
+        [
+          12600,
+          16500
+        ]
+      ],
+      "accepted_answers": [
+        "Bolivia",
+        "ở Bolivia"
+      ],
+      "modality": "ocr",
+      "predicted_answer": "Bolivia",
+      "predicted_video": "L22_V003",
+      "predicted_frame": 12725,
+      "localization_hit": true,
+      "answer_hit": true,
+      "full_condition": true,
+      "abstained": false
+    },
+    {
+      "question": "Bệnh nhân được nhắc đến bị bệnh gì?",
+      "decomposed_query": "Bệnh nhân được nhắc đến bị bệnh",
+      "target_video": "L22_V002",
+      "intervals": [
+        [
+          5400,
+          5600
+        ]
+      ],
+      "accepted_answers": [
+        "thuyên tắc phổi cấp",
+        "thuyên tắc phổi"
+      ],
+      "modality": "ocr",
+      "predicted_answer": "bạch hầu",
+      "predicted_video": "L22_V002",
+      "predicted_frame": 17225,
+      "localization_hit": false,
+      "answer_hit": false,
+      "full_condition": false,
+      "abstained": false
+    },
+    {
+      "question": "Người mặc bộ đồ mocap đang biểu diễn trên phông nền màu gì?",
+      "decomposed_query": "Người mặc bộ đồ mocap đang biểu diễn trên phông nền",
+      "target_video": "L22_V002",
+      "intervals": [
+        [
+          11600,
+          11900
+        ]
+      ],
+      "accepted_answers": [
+        "màu xanh",
+        "xanh lá",
+        "xanh lá cây",
+        "nền xanh"
+      ],
+      "modality": "visual",
+      "predicted_answer": "",
+      "predicted_video": "L22_V001",
+      "predicted_frame": 24450,
+      "localization_hit": false,
+      "answer_hit": false,
+      "full_condition": false,
+      "abstained": true
+    },
+    {
+      "question": "Trên ứng dụng điện thoại thông minh, mục đầu tiên trên cùng của menu tên là gì?",
+      "decomposed_query": "Trên ứng dụng điện thoại thông minh, mục đầu tiên trên cùng của menu tên là",
+      "target_video": "L22_V003",
+      "intervals": [
+        [
+          17000,
+          17300
+        ]
+      ],
+      "accepted_answers": [
+        "Explore",
+        "Explore (Beta)"
+      ],
+      "modality": "ocr",
+      "predicted_answer": "",
+      "predicted_video": "L22_V003",
+      "predicted_frame": 18575,
+      "localization_hit": false,
+      "answer_hit": false,
+      "full_condition": false,
+      "abstained": true
+    },
+    {
+      "question": "Nhân viên cứu hộ đu dây xuống hố đội mũ bảo hiểm màu gì?",
+      "decomposed_query": "Nhân viên cứu hộ đu dây xuống hố đội mũ bảo hiểm",
+      "target_video": "L22_V001",
+      "intervals": [
+        [
+          21900,
+          22260
+        ]
+      ],
+      "accepted_answers": [
+        "màu cam",
+        "cam",
+        "mũ màu cam"
+      ],
+      "modality": "visual",
+      "predicted_answer": "",
+      "predicted_video": "L22_V003",
+      "predicted_frame": 27600,
+      "localization_hit": false,
+      "answer_hit": false,
+      "full_condition": false,
+      "abstained": true
+    },
+    {
+      "question": "Loài động vật nào được hỗ trợ thả về tự nhiên?",
+      "decomposed_query": "Loài động vật được hỗ trợ thả về tự nhiên",
+      "target_video": "L22_V001",
+      "intervals": [
+        [
+          8500,
+          9700
+        ]
+      ],
+      "accepted_answers": [
+        "rùa",
+        "rùa biển"
+      ],
+      "modality": "asr",
+      "predicted_answer": "rùa",
+      "predicted_video": "L22_V003",
+      "predicted_frame": 17825,
+      "localization_hit": false,
+      "answer_hit": true,
+      "full_condition": false,
+      "abstained": false
+    },
+    {
+      "question": "Ngày hội việc làm được tổ chức dành cho đối tượng nào?",
+      "decomposed_query": "Ngày hội việc làm được tổ chức dành cho đối tượng",
+      "target_video": "L22_V002",
+      "intervals": [
+        [
+          250,
+          600
+        ],
+        [
+          1000,
+          2900
+        ]
+      ],
+      "accepted_answers": [
+        "bác sĩ trẻ",
+        "các bác sĩ trẻ",
+        "bác sĩ"
+      ],
+      "modality": "asr",
+      "predicted_answer": "bác sĩ",
+      "predicted_video": "L22_V001",
+      "predicted_frame": 19530,
+      "localization_hit": false,
+      "answer_hit": true,
+      "full_condition": false,
+      "abstained": false
+    },
+    {
+      "question": "Bảng điện tử tại sân bay hiển thị tên hãng hàng không nào?",
+      "decomposed_query": "Bảng điện tử tại sân bay hiển thị tên hãng hàng không",
+      "target_video": "L22_V003",
+      "intervals": [
+        [
+          8400,
+          8750
+        ]
+      ],
+      "accepted_answers": [
+        "Vietnam Airlines"
+      ],
+      "modality": "ocr",
+      "predicted_answer": "",
+      "predicted_video": "L22_V002",
+      "predicted_frame": 13675,
+      "localization_hit": false,
+      "answer_hit": false,
+      "full_condition": false,
+      "abstained": true
+    }
+  ],
+  "qa_negative": [
+    {
+      "question": "Tổng thống Mỹ phát biểu tại thành phố nào?",
+      "predicted_answer": "",
+      "abstained": true,
+      "false_answer": false
+    },
+    {
+      "question": "Vụ tai nạn giao thông ở Đắk Lắk khiến bao nhiêu người bị thương?",
+      "predicted_answer": "",
+      "abstained": true,
+      "false_answer": false
+    },
+    {
+      "question": "Ai là ca sĩ biểu diễn trong lễ hội âm nhạc?",
+      "predicted_answer": "",
+      "abstained": true,
+      "false_answer": false
+    },
+    {
+      "question": "Giá vàng miếng SJC hôm nay giảm bao nhiêu triệu đồng?",
+      "predicted_answer": "",
+      "abstained": true,
+      "false_answer": false
+    },
+    {
+      "question": "Người dẫn chương trình nam mặc áo sơ mi màu vàng phải không?",
+      "predicted_answer": "",
+      "abstained": true,
+      "false_answer": false
+    },
+    {
+      "question": "Tàu ngầm quân sự xuất hiện ở vùng biển nào?",
+      "predicted_answer": "",
+      "abstained": true,
+      "false_answer": false
+    },
+    {
+      "question": "Cây cầu bắc qua sông dài bao nhiêu mét?",
+      "predicted_answer": "",
+      "abstained": true,
+      "false_answer": false
+    },
+    {
+      "question": "Công ty sản xuất ô tô điện nào vừa tuyên bố phá sản?",
+      "predicted_answer": "",
+      "abstained": true,
+      "false_answer": false
+    },
+    {
+      "question": "Trận động đất mạnh bao nhiêu độ richter?",
+      "predicted_answer": "",
+      "abstained": true,
+      "false_answer": false
+    },
+    {
+      "question": "Món ăn truyền thống nào được giới thiệu trong phóng sự ẩm thực?",
+      "predicted_answer": "",
+      "abstained": true,
+      "false_answer": false
+    }
+  ],
+  "trake": [
+    {
+      "events": [
+        "cảnh quay từ trên cao của pháo đài hình ngôi sao",
+        "nhân viên cứu hộ đu dây xuống hố sâu",
+        "đám cháy lớn bùng phát tại nhà xưởng"
+      ],
+      "target_video": "L22_V001",
+      "modality": "visual",
+      "video_match": true,
+      "hits": 1,
+      "total_events": 3,
+      "event_fraction": 0.3333333333333333,
+      "monotonic": true,
+      "prediction": {
+        "video_id": "L22_V001",
+        "frame_ids": [
+          6900,
+          11220,
+          33180
+        ],
+        "events": [
+          {
+            "frame_id": 6900
+          },
+          {
+            "frame_id": 11220
+          },
+          {
+            "frame_id": 33180
+          }
+        ],
+        "score": 3.167784357418011
+      }
+    },
+    {
+      "events": [
+        "khởi công dự án cải tạo đền thờ Nguyễn Hữu Cảnh",
+        "thả rùa biển về tự nhiên",
+        "nhiệt độ đạt 40 độ C"
+      ],
+      "target_video": "L22_V001",
+      "modality": "asr",
+      "video_match": true,
+      "hits": 1,
+      "total_events": 3,
+      "event_fraction": 0.3333333333333333,
+      "monotonic": true,
+      "prediction": {
+        "video_id": "L22_V001",
+        "frame_ids": [
+          450,
+          6180,
+          10950
+        ],
+        "events": [
+          {
+            "frame_id": 450
+          },
+          {
+            "frame_id": 6180
+          },
+          {
+            "frame_id": 10950
+          }
+        ],
+        "score": 4.818181818181818
+      }
+    },
+    {
+      "events": [
+        "khai mạc ngày hội việc làm dành cho bác sĩ trẻ",
+        "người mặc bộ đồ mocap uốn người trên nền xanh",
+        "thiếu niên nghiện smartphone có nguy cơ trầm cảm"
+      ],
+      "target_video": "L22_V002",
+      "modality": "mixed",
+      "video_match": false,
+      "hits": 0,
+      "total_events": 3,
+      "event_fraction": 0.0,
+      "monotonic": true,
+      "prediction": {
+        "video_id": "L22_V001",
+        "frame_ids": [
+          6120,
+          7380,
+          24450
+        ],
+        "events": [
+          {
+            "frame_id": 6120
+          },
+          {
+            "frame_id": 7380
+          },
+          {
+            "frame_id": 24450
+          }
+        ],
+        "score": 3.355654496764261
+      }
+    },
+    {
+      "events": [
+        "bệnh nhân bị thuyên tắc phổi cấp",
+        "thuyền bị lật chìm một nửa trên sông có xuồng cứu hộ"
+      ],
+      "target_video": "L22_V002",
+      "modality": "mixed",
+      "video_match": true,
+      "hits": 0,
+      "total_events": 2,
+      "event_fraction": 0.0,
+      "monotonic": true,
+      "prediction": {
+        "video_id": "L22_V002",
+        "frame_ids": [
+          10375,
+          10425
+        ],
+        "events": [
+          {
+            "frame_id": 10375
+          },
+          {
+            "frame_id": 10425
+          }
+        ],
+        "score": 2.0893369888246234
+      }
+    },
+    {
+      "events": [
+        "bảng điện tử Vietnam Airlines Nhóm 1 Nhóm 2 tại sân bay",
+        "bầu cử tổng thống Mỹ tại Đảng Dân chủ",
+        "vệt lửa dài bùng cháy trên cánh đồng lúc chạng vạng"
+      ],
+      "target_video": "L22_V003",
+      "modality": "mixed",
+      "video_match": true,
+      "hits": 0,
+      "total_events": 3,
+      "event_fraction": 0.0,
+      "monotonic": true,
+      "prediction": {
+        "video_id": "L22_V003",
+        "frame_ids": [
+          350,
+          13475,
+          17825
+        ],
+        "events": [
+          {
+            "frame_id": 350
+          },
+          {
+            "frame_id": 13475
+          },
+          {
+            "frame_id": 17825
+          }
+        ],
+        "score": 3.473251021421052
+      }
+    },
+    {
+      "events": [
+        "cháy rừng lan rộng tại Bolivia",
+        "tay cầm điện thoại hiển thị menu Explore và Currency",
+        "đám đông du khách đi bộ lên đền chùa"
+      ],
+      "target_video": "L22_V003",
+      "modality": "mixed",
+      "video_match": false,
+      "hits": 1,
+      "total_events": 3,
+      "event_fraction": 0.3333333333333333,
+      "monotonic": true,
+      "prediction": {
+        "video_id": "L22_V002",
+        "frame_ids": [
+          13100,
+          13650,
+          23175
+        ],
+        "events": [
+          {
+            "frame_id": 13100
+          },
+          {
+            "frame_id": 13650
+          },
+          {
+            "frame_id": 23175
+          }
+        ],
+        "score": 3.097964037964177
+      }
+    }
+  ]
+}

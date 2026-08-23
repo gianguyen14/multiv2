@@ -1,11 +1,12 @@
 """Integration tests for CandidateReranker with ConfiguredSearch."""
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from backend.app.services.configured_search import ConfiguredSearch
 from backend.app.services.query_refiner import QueryPlan, VisualQuery
-from backend.app.video.text_evidence import OCRRecord, ASRSegment
+from backend.app.video.text_evidence import ASRSegment, OCRRecord
 
 
 class DummyIndex:
@@ -80,5 +81,9 @@ def test_configured_search_reranker_integration():
 
     # 2. Search with reranker disabled
     results_norerank, _ = search._search_multi_path(plan, top_k=10, rerank=False)
-    # Frame 100 has higher initial visual score (0.88 vs 0.85) and ranks #1 when reranker is disabled
-    assert results_norerank[0]["source_frame_index_zero_based"] == 100
+    # Base weighted RRF must still be score-sorted. Frame 200 is corroborated by
+    # visual and OCR, so it outranks the visual-only frame without relying on the
+    # evidence-aware reranker.
+    assert results_norerank[0]["source_frame_index_zero_based"] == 200
+    assert results_norerank[0]["score"] > results_norerank[1]["score"]
+    assert "rerank_metadata" not in results_norerank[0]

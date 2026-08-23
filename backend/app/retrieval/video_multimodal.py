@@ -1,16 +1,51 @@
 from dataclasses import dataclass, field
+from functools import lru_cache
 
 from backend.app.video.text_evidence import normalize_text
 
+_STOPWORDS = frozenset({
+    "có", "là", "và", "của", "trong", "ở", "một", "những", "cho", "để", "với",
+    "không", "đến", "các", "thì", "mà", "như",
+})
+def _content_tokens(value):
+    return [token for token in normalize_text(value).split() if token not in _STOPWORDS]
+
+
+@lru_cache(maxsize=256)
+def _query_features(query):
+    tokens = tuple(_content_tokens(query))
+    return tokens, frozenset(tokens)
+
+
+def _phrase_relevance(query_tokens, text_tokens):
+    """Measure exact ordered phrase evidence in linear time."""
+    if len(query_tokens) < 2 or len(text_tokens) < 2:
+        return 0.0
+    separator = "\0"
+    query_phrase = separator + separator.join(query_tokens) + separator
+    text_phrase = separator + separator.join(text_tokens) + separator
+    return 1.0 if query_phrase in text_phrase else 0.0
+
 
 def lexical_score(query, text):
-    stopwords = {"có", "là", "và", "của", "trong", "ở", "một", "những", "cho", "để", "với", "không", "đến", "các", "thì", "mà", "như"}
-    query_terms = set(normalize_text(query).split()) - stopwords
-    text_terms = set(normalize_text(text).split())
-    if not query_terms:
+    """Score lexical relevance while resisting dilution from long queries.
+
+    Dice overlap balances query coverage against evidence precision, so one
+    generic shared term cannot dominate a long query. Contiguous multi-token
+    phrases receive an additional signal.
+    """
+    query_tokens, query_terms = _query_features(query)
+    text_tokens = _content_tokens(text)
+    text_terms = set(text_tokens)
+    if not query_terms or not text_terms:
         return 0.0
     overlap = query_terms & text_terms
-    return len(overlap) / len(query_terms) if overlap else 0.0
+    if not overlap:
+        return 0.0
+
+    dice_overlap = 2 * len(overlap) / (len(query_terms) + len(text_terms))
+    phrase_relevance = _phrase_relevance(query_tokens, text_tokens)
+    return min(1.0, max(dice_overlap, phrase_relevance))
 
 
 def minmax(values):
