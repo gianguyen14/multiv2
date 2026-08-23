@@ -1,0 +1,17 @@
+# ==============================================================================
+# AIC 2026 Multimodal Video Retrieval — Optional NVIDIA GPU Override Compose
+# Usage: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# ==============================================================================
+
+services:
+  aic:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      - CUDA_VISIBLE_DEVICES=all
+      - TORCH_CUDA_ARCH_LIST=Auto

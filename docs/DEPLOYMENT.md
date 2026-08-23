@@ -1,155 +1,135 @@
-# Multimodal Video Retrieval System — Deployment & Operations Guide
+# AIC 2026 Multimodal Video Retrieval — Production Deployment Guide
 
-## 1. System Overview & Architecture
+This document outlines the standard production deployment, configuration, update, and rollback workflows for the AIC 2026 Multimodal Retrieval service using Docker.
 
-The HCM City AI Challenge 2026 Multimodal Video Retrieval System is packaged as a high-performance, self-contained containerized service.
+---
 
-```
-                           USER BROWSER / API CLIENT
-                                      │
-                                      ▼
-                           FastAPI Backend (:8000)
-                                      │
-                         ┌────────────┼────────────┐
-                         │                         │
-                   /api/search               /health/ready
-                         │
-                         ▼
-                   ConfiguredSearch
-                         │
-                   Query Intelligence (VI / EN / Lexical Plan)
-                         │
-          ┌──────────────┼──────────────┐
-          │              │              │
-       SigLIP2       Faster-Whisper   Tesseract / PaddleOCR
-      (Visual)           (ASR)                (OCR)
-          │              │              │
-          └──────────────┼──────────────┘
-                         │
-                   RRF Fusion (K=60)
-                         │
-                 CandidateReranker
-                         │
-                   Temporal NMS
-                         │
-                 Top-N Ranked Frames
+## 1. Directory Structure
+
+Recommended production server layout:
+
+```text
+/opt/aic/
+├── app/        # Cloned Git repository
+├── data/       # Persistent indexed data and video metadata
+│   ├── videos/
+│   └── processed/
+├── models/     # Persistent ML model weights (offline cache)
+├── cache/      # Persistent HuggingFace / PyTorch caches
+│   ├── huggingface/
+│   └── torch/
+└── logs/       # Application logs (if file logging is enabled)
 ```
 
 ---
 
-## 2. Host Requirements
-
-### CPU Mode (Baseline)
-- **OS**: Linux (Ubuntu 22.04+, Debian 12+, RHEL 9+, Fedora) or Windows 10/11 (Docker Desktop with WSL2).
-- **RAM**: Minimum 8 GB recommended (16 GB for concurrent operations).
-- **Disk**: 10+ GB free storage for models and index storage.
-- **Software**: Docker Engine 24.0+ and Docker Compose v2.20+.
-
-### CUDA GPU Mode (Accelerated)
-- **GPU**: NVIDIA GPU with Turing/Ampere/Ada/Hopper architecture (Pascal+ supported with appropriate compute capabilities).
-- **Driver**: NVIDIA Linux Driver 525+ / Windows NVIDIA Driver with WSL2 GPU passthrough.
-- **Container Toolkit**: NVIDIA Container Toolkit (`nvidia-container-toolkit` on Linux, enabled in Docker Desktop for Windows).
-
----
-
-## 3. One-Command Deployment
-
-### Linux
-```bash
-# 1. Clone repository and navigate to root
-cd /path/to/Project
-
-# 2. Deploy (CPU mode)
-./deploy.sh
-
-# 2b. Deploy with CUDA GPU acceleration (if NVIDIA hardware is present)
-./deploy.sh --cuda
-
-# 3. Stop containers
-./stop.sh
-```
-
-### Windows (PowerShell)
-```powershell
-# 1. Open PowerShell in project directory
-cd C:\Path\To\Project
-
-# 2. Deploy (CPU mode)
-.\deploy.ps1
-
-# 2b. Deploy with CUDA GPU acceleration
-.\deploy.ps1 -Cuda
-
-# 3. Stop containers
-.\stop.ps1
-```
-
----
-
-## 4. Persistent Volume Layout
-
-The deployment mounts three directories between the host and container:
-
-| Host Path | Container Mount | Mode | Purpose |
-|---|---|---|---|
-| `./data/videos` | `/data/videos` | `ro` (read-only) | Source video files |
-| `./data/processed` | `/data/processed` | `rw` (read-write) | Frame indices, OCR/ASR metadata, query cache |
-| `./models` | `/models` | `rw` (read-write) | Local model weights (SigLIP2, Faster-Whisper, Qwen, PaddleOCR) |
-
----
-
-## 5. Offline Operation & Model Preparation
-
-All models can be prepared while online, then operated in strict offline mode without network connectivity.
+## 2. Quick Start Installation
 
 ```bash
-# 1. Prepare visual model (SigLIP2)
-python projectctl.py models --prepare --visual
+# 1. Clone repository to /opt/aic/app
+git clone git@github.com:gianguyen14/multiv2.git /opt/aic/app
+cd /opt/aic/app
 
-# 2. Prepare ASR model (Faster-Whisper small)
-python projectctl.py models --prepare --asr
+# 2. Setup environment configuration
+cp .env.example .env
 
-# 3. Prepare Query Refiner model
-python projectctl.py models --prepare --query-refiner
+# 3. Create persistent directories
+mkdir -p /opt/aic/data /opt/aic/models /opt/aic/cache /opt/aic/logs
 
-# 4. Verify offline readiness
-python projectctl.py models --verify-offline --all
+# 4. Build and start service via deploy script
+./deploy/install.sh
+
+# Or using docker compose directly:
+docker compose build
+docker compose up -d
 ```
-
-Set `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1` in `.env` to enforce zero outgoing network requests at inference.
 
 ---
 
-## 6. Preflight Health Checks & System Doctor
+## 3. Recommended Production Environment (`.env`)
 
-Run the system doctor to verify environment readiness before competition operations:
+Configure the following visual sampling and local refinement parameters in `.env`:
+
+```ini
+# Production Visual Sampling Configuration
+VISUAL_SAMPLING_MODE=sparse_shot
+VISUAL_GLOBAL_SAMPLE_SECONDS=5.0
+VISUAL_DEDUP_ENABLED=true
+VISUAL_DEDUP_THRESHOLD=0.97
+
+# Query-Time Local Dense Refinement
+LOCAL_REFINE_ENABLED=true
+LOCAL_REFINE_WINDOW_SECONDS=10.0
+LOCAL_REFINE_INTERVAL_SECONDS=0.5
+LOCAL_REFINE_MAX_REGIONS=5
+```
+
+### Rollback Configuration
+To restore the legacy 1.0-second uniform sampling baseline without deduplication or local refinement, update `.env`:
+
+```ini
+VISUAL_SAMPLING_MODE=legacy
+VISUAL_DEDUP_ENABLED=false
+LOCAL_REFINE_ENABLED=false
+```
+
+---
+
+## 4. Operational Commands
+
+### Check Status & Health
+```bash
+./deploy/status.sh
+# Or:
+docker compose ps
+curl -s http://127.0.0.1:8000/health/live
+```
+
+### View Application Logs
+```bash
+docker compose logs -f --tail=100 aic
+```
+
+### Update to Latest Version
+```bash
+./deploy/update.sh
+# Or manually:
+git pull --ff-only
+docker compose up -d --build
+```
+
+### Rollback to Previous Version / Commit
+```bash
+./deploy/rollback.sh <git-commit-or-tag>
+# Example: ./deploy/rollback.sh 291044b
+```
+
+### Stop / Restart Service
+```bash
+# Restart container
+docker compose restart aic
+
+# Stop container (Preserves data volumes)
+docker compose down
+
+# IMPORTANT: Never run 'docker compose down -v' in production to avoid volume loss.
+```
+
+---
+
+## 5. GPU Acceleration (Optional)
+
+To enable NVIDIA GPU acceleration:
 
 ```bash
-python projectctl.py doctor
-```
-
-Example output:
-```
-=== AIC 2026 System Doctor Preflight ===
-[PASS           ] Docker Runtime      : docker installed
-[PASS           ] Processed Root      : data/processed-validation/three-video-final
-[PASS           ] CURRENT Index       : VALID (gen-3d51a16ea32b4953820583c3af181b31)
-[PASS           ] Disk Free Space     : 340.8 GB free
-[PASS           ] SigLIP2 Weights     : cached locally
-[PASS           ] Faster-Whisper      : cached locally
-[PASS (FALLBACK)] Query Refiner       : deterministic fallback ready
-[PASS           ] Tesseract OCR       : tesseract present (vie=True, eng=True)
-[INFO           ] GPU / CUDA          : NOT AVAILABLE (CPU MODE)
-[PASS           ] FFmpeg Decoder      : ffmpeg installed
-----------------------------------------
-Overall Preflight Verdict: PASS
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 ```
 
 ---
 
-## 7. Security & Network Configuration
+## 6. Reverse Proxy & Security
 
-- **Localhost Default Bind**: The container binds to `127.0.0.1:8000` by default.
-- **Unauthenticated API**: The API is unauthenticated by design for low-latency competition use.
-- **Production Exposure**: If exposed beyond localhost or a trusted private LAN, put the service behind a reverse proxy (e.g. Nginx, Caddy, Cloudflare Tunnel) with TLS and authentication.
-- **Registry Tokens**: Docker registry tokens are read from environment variables (`DOCKER_HUB_TOKEN`) or interactive standard input—never commit credentials to version control.
+* The AIC API binds to `127.0.0.1:8000` by default.
+* For external access, proxy through Nginx, Caddy, or a Tailscale funnel with TLS termination.
+* Container executes as non-root user `appuser` (UID 1000).
+* Container does not require privileged mode or access to `/var/run/docker.sock`.
