@@ -1,8 +1,8 @@
 # Configuration flags for the project
 import os
 
-SIGLIP_ENABLED = True
-SIGLIP2_MODEL = "google/siglip2-base-patch16-224"
+SIGLIP_ENABLED = os.getenv("SIGLIP_ENABLED", "true").lower() in ("1", "true", "yes")
+SIGLIP2_MODEL = os.getenv("SIGLIP2_MODEL", "google/siglip2-base-patch16-224")
 # Long text encoding is isolated behind a mode flag so deployments can restore
 # the historical first-window behavior with SIGLIP_LONG_TEXT_MODE=truncate.
 SIGLIP_LONG_TEXT_MODE = os.getenv("SIGLIP_LONG_TEXT_MODE", "chunk_mean").lower()
