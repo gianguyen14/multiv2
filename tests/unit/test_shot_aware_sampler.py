@@ -13,6 +13,7 @@ from backend.app.video.frame_sampler import (
     iter_sample_sparse_shot_frames,
     sample_frames,
     sample_sparse_shot_frames,
+    sample_sparse_shot_frames_with_protection,
 )
 from backend.app.video.video_decoder import DecodedFrame
 
@@ -169,6 +170,37 @@ def test_sparse_shot_determinism():
         assert s1.frame.source_frame_index_zero_based == s2.frame.source_frame_index_zero_based
         assert s1.frame.timestamp_seconds == s2.frame.timestamp_seconds
         assert s1.target_timestamp_seconds == s2.target_timestamp_seconds
+
+
+def test_sparse_shot_sampling_does_not_retain_every_decoded_frame():
+    """Sparse sampling must keep memory proportional to selected frames, not video length."""
+
+    class TrackedFrame:
+        live = 0
+        peak = 0
+
+        def __init__(self, index):
+            type(self).live += 1
+            type(self).peak = max(type(self).peak, type(self).live)
+            self.source_frame_index_zero_based = index
+            self.timestamp_seconds = index / 10.0
+
+        def __del__(self):
+            type(self).live -= 1
+
+    def decoded_frames():
+        for index in range(10_000):
+            yield TrackedFrame(index)
+
+    sampled, protected = sample_sparse_shot_frames_with_protection(
+        decoded_frames(),
+        interval_seconds=5.0,
+        shot_boundaries=[(0.0, 999.9)],
+    )
+
+    assert len(sampled) == 201
+    assert len(protected) == 1
+    assert TrackedFrame.peak < 250
 
 
 def test_pipeline_legacy_mode_does_not_invoke_detector(tmp_path):

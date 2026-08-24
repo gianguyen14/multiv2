@@ -65,34 +65,97 @@ def sample_sparse_shot_frames_with_protection(
     if interval_seconds is None or not isinstance(interval_seconds, (int, float)) or math.isnan(interval_seconds) or math.isinf(interval_seconds) or interval_seconds <= 0:
         raise ValueError("sample interval must be a positive and finite number")
 
-    frame_list = [f for f in frames if f.timestamp_seconds is not None]
-    if not frame_list:
+    # Retain only selected frames while streaming the decoder.  A decoded RGB
+    # frame is several megabytes for normal AIC video, so materializing a whole
+    # video here makes sparse sampling use more memory than legacy sampling.
+    periodic_map: dict[int, SampledFrame] = {}
+    valid_shots = []
+    for shot_idx, boundary in enumerate(shot_boundaries or []):
+        if not isinstance(boundary, (tuple, list)) or len(boundary) != 2:
+            continue
+        s_start, s_end = boundary
+        if not isinstance(s_start, (int, float)) or not isinstance(s_end, (int, float)):
+            continue
+        if math.isnan(s_start) or math.isnan(s_end) or math.isinf(s_start) or math.isinf(s_end):
+            continue
+        if s_end < s_start or s_start < 0:
+            continue
+        valid_shots.append(((s_start + s_end) / 2.0, shot_idx, s_start, s_end))
+    valid_shots.sort(key=lambda item: (item[0], item[1]))
+
+    periodic_target = 0.0
+    last_periodic_index = None
+    previous = None
+    last_timed = None
+    next_shot = 0
+    shot_choices: list[tuple[int, SampledFrame]] = []
+
+    for current in frames:
+        if current.timestamp_seconds is None:
+            continue
+        last_timed = current
+        if previous is None:
+            previous = current
+
+        while periodic_target <= current.timestamp_seconds:
+            candidate = previous
+            if abs(current.timestamp_seconds - periodic_target) < abs(previous.timestamp_seconds - periodic_target):
+                candidate = current
+            idx = candidate.source_frame_index_zero_based
+            if idx != last_periodic_index:
+                periodic_map[idx] = SampledFrame(
+                    candidate,
+                    periodic_target,
+                    sampling_reason="periodic",
+                    shot_id=None,
+                )
+                last_periodic_index = idx
+            periodic_target += interval_seconds
+
+        while next_shot < len(valid_shots) and valid_shots[next_shot][0] <= current.timestamp_seconds:
+            mid_sec, shot_idx, s_start, s_end = valid_shots[next_shot]
+            adjacent = [previous] if previous is current else [previous, current]
+            in_window = [
+                frame for frame in adjacent
+                if s_start <= frame.timestamp_seconds <= s_end
+            ]
+            candidates = in_window or adjacent
+            best_frame = min(
+                candidates,
+                key=lambda frame: (
+                    abs(frame.timestamp_seconds - mid_sec),
+                    frame.source_frame_index_zero_based,
+                ),
+            )
+            shot_choices.append((shot_idx, SampledFrame(
+                best_frame,
+                mid_sec,
+                sampling_reason="shot",
+                shot_id=shot_idx,
+            )))
+            next_shot += 1
+        previous = current
+
+    if last_timed is None:
         raise FrameSamplingError("video has no usable frame timestamps")
 
-    # 1. Periodic sampling
-    periodic_map: dict[int, SampledFrame] = {}
-    for item in iter_sample_frames(frame_list, interval_seconds):
-        periodic_map[item.frame.source_frame_index_zero_based] = SampledFrame(
-            item.frame, item.target_timestamp_seconds, sampling_reason="periodic", shot_id=None
-        )
+    # Shot midpoints beyond the last decoded timestamp resolve to the last
+    # frame, matching the historical nearest-frame fallback.
+    while next_shot < len(valid_shots):
+        mid_sec, shot_idx, _, _ = valid_shots[next_shot]
+        shot_choices.append((shot_idx, SampledFrame(
+            last_timed,
+            mid_sec,
+            sampling_reason="shot",
+            shot_id=shot_idx,
+        )))
+        next_shot += 1
 
-    # 2. Shot midpoint sampling (if shot boundaries are provided)
+    # Preserve the historical collision rule: when multiple input shots map
+    # to one source frame, the later input shot supplies the shot_id.
     shot_map: dict[int, SampledFrame] = {}
-    if shot_boundaries:
-        for shot_idx, (s_start, s_end) in enumerate(shot_boundaries):
-            if not isinstance(s_start, (int, float)) or not isinstance(s_end, (int, float)):
-                continue
-            if math.isnan(s_start) or math.isnan(s_end) or math.isinf(s_start) or math.isinf(s_end):
-                continue
-            if s_end < s_start or s_start < 0:
-                continue
-            mid_sec = (s_start + s_end) / 2.0
-            # Prefer candidate frames within the shot's temporal window [s_start, s_end]
-            in_window = [f for f in frame_list if s_start <= f.timestamp_seconds <= s_end]
-            candidates = in_window if in_window else frame_list
-            best_frame = min(candidates, key=lambda f: (abs(f.timestamp_seconds - mid_sec), f.source_frame_index_zero_based))
-            idx = best_frame.source_frame_index_zero_based
-            shot_map[idx] = SampledFrame(best_frame, mid_sec, sampling_reason="shot", shot_id=shot_idx)
+    for _, item in sorted(shot_choices, key=lambda choice: choice[0]):
+        shot_map[item.frame.source_frame_index_zero_based] = item
 
     # 3. Merge & Deduplicate exact source frame indices with provenance tracking
     merged_map: dict[int, SampledFrame] = {}
