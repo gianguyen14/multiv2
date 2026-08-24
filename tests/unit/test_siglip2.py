@@ -54,6 +54,7 @@ class TestSigLIP2Encoder:
         finally:
             config.SIGLIP_ENABLED = True
 
+    @pytest.mark.real_model
     def test_embedding_dim_property(self):
         """Test embedding_dim property returns correct value."""
         from backend.app.embeddings.siglip2 import SigLIP2Encoder
@@ -93,6 +94,7 @@ class TestSigLIP2Encoder:
         finally:
             config.SIGLIP_ENABLED = original
 
+    @pytest.mark.real_model
     def test_clear_cache(self):
         """Test clear_cache resets internal state."""
         from backend.app.embeddings.siglip2 import SigLIP2Encoder

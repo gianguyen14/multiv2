@@ -11,6 +11,9 @@ from backend.app.embeddings.siglip2 import SigLIP2Encoder
 from backend.app.indexes.faiss_siglip_index import FaissSigLIPIndex
 
 
+pytestmark = pytest.mark.real_model
+
+
 @pytest.fixture
 def siglip_encoder():
     """Fixture for SigLIP2 encoder."""
