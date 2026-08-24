@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "agent": "chatgpt-work",
+  "branch": "agent/chatgpt-work-realdata-e2e",
+  "base_main_sha": "6e546c9b8e18a727b2069d8e23a3dbdfa937410e",
+  "environment": {
+    "python": "3.12.13",
+    "cpu_logical": 9,
+    "ram_gib": 15,
+    "swap_gib": 0,
+    "gpu": null,
+    "initial_free_disk_gib": 52
+  },
+  "archives": {
+    "metadata_checked": 14,
+    "metadata_http_200": 14,
+    "estimated_compressed_bytes": 82984188066,
+    "downloaded": ["Videos_L23_a.zip"],
+    "zip_integrity_passed": ["Videos_L23_a.zip"],
+    "extracted_videos": 25,
+    "probed_videos": 25,
+    "probe_failures": 0,
+    "probed_duration_seconds": 9723.263131
+  },
+  "query_pack": {
+    "archive": "SOTUYEN1-bo-de-thi(1).zip",
+    "zip_integrity": "passed",
+    "files": 15,
+    "kis": 12,
+    "qa": 3,
+    "parse_failures": 0,
+    "trusted_ground_truth": false
+  },
+  "real_index": {
+    "archive": "Videos_L23_a.zip",
+    "videos": ["L23_V001", "L23_V002", "L23_V003"],
+    "indexed_duration_seconds": 921.76,
+    "decoded_frames": 23044,
+    "periodic_candidates": 187,
+    "retained_vectors": 181,
+    "dedup_reduction_fraction": 0.03208556149732622,
+    "generation": "gen-d796b5c29ef442f3b6aa987827f7ea85",
+    "ntotal": 181,
+    "mapping_count": 181,
+    "payload_count": 181,
+    "dimension": 768,
+    "invariant": true,
+    "wall_seconds": 256.062522069,
+    "peak_rss_mib": 1532.80859375
+  },
+  "queries": {
+    "executed": 15,
+    "runtime_successes": 15,
+    "runtime_failures": 0,
+    "qa_answers_nonempty": 0,
+    "global_search_ms": {
+      "p50": 118.46956899989891,
+      "p95_including_cold_load": 3043.1605387000573,
+      "warm_p95": 214.997236850013
+    },
+    "quality_metrics": "unavailable_without_trusted_ground_truth"
+  },
+  "local_refinement": {
+    "real_video": "L23_V001",
+    "coarse_timestamp_seconds": 165.0,
+    "refined_timestamp_seconds": 172.0,
+    "timestamps_sampled": 41,
+    "refinement_ms": 44397.449253,
+    "peak_rss_mib": 1682.17578125,
+    "persistent_index_unchanged": true,
+    "production_kis_qa_integration": false
+  },
+  "optimization": {
+    "scope": "L23_V001 real legacy embeddings; sparse candidates derived exactly",
+    "legacy_vectors": 176,
+    "candidate_3s_vectors": 55,
+    "candidate_5s_vectors": 35,
+    "threshold_096_vectors": 33,
+    "threshold_097_vectors": 35,
+    "threshold_098_vectors": 36,
+    "selected": {
+      "sampling_mode": "sparse_shot",
+      "interval_seconds": 5.0,
+      "dedup_enabled": true,
+      "dedup_threshold": 0.97,
+      "local_refine_enabled": true,
+      "local_refine_window_seconds": 10.0,
+      "local_refine_interval_seconds": 0.5,
+      "local_refine_max_regions": 5
+    },
+    "selection_limit": "runtime correctness and vector reduction only; no quality claim"
+  },
+  "shot_detection": {
+    "implementation": "TransNetV2Adapter",
+    "tensorflow_available": false,
+    "weights_available": false,
+    "real_inference_working": false,
+    "fallback": "periodic_only"
+  },
+  "tests": {
+    "repository_items": 563,
+    "passed": 557,
+    "failed": 0,
+    "skipped_missing_prebuilt_indexes": 4,
+    "unavailable_external_model_tests": 2,
+    "compileall": "passed"
+  },
+  "docker": {
+    "cli_available": false,
+    "yaml_parse": "passed",
+    "shell_syntax": "passed",
+    "host_health_live": 200,
+    "host_health_ready": 200,
+    "image_build": "unavailable"
+  },
+  "limitations": [
+    "The 77.29 GiB compressed corpus exceeded the initial 52 GiB free disk, so only the smallest archive was downloaded.",
+    "CPU-only throughput bounded indexing to three progressively gated videos.",
+    "No trusted ground truth accompanied the supplied queries.",
+    "TransNet TensorFlow runtime and weights were unavailable and its inference method remains a placeholder.",
+    "The standalone local-refinement module is not connected to the production KIS/QA search path.",
+    "Docker CLI/daemon was unavailable."
+  ]
+}
