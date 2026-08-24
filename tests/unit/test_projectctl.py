@@ -169,6 +169,27 @@ def test_index_parser_has_index_type():
     assert parsed.index_type == "hnsw"
 
 
+def test_ingest_config_preserves_documented_visual_environment(monkeypatch, tmp_path):
+    monkeypatch.setenv("VISUAL_SAMPLING_MODE", "sparse_shot")
+    monkeypatch.setenv("VISUAL_GLOBAL_SAMPLE_SECONDS", "3.0")
+    monkeypatch.setenv("VISUAL_DEDUP_ENABLED", "true")
+    monkeypatch.setenv("VISUAL_DEDUP_THRESHOLD", "0.96")
+    monkeypatch.setenv("VIDEO_EMBED_BATCH_SIZE", "7")
+    monkeypatch.setenv("VIDEO_INDEX_TYPE", "hnsw")
+    parsed = projectctl.parser().parse_args(
+        ["ingest", "videos", "--processed-root", str(tmp_path)]
+    )
+
+    config = projectctl._video_ingest_config(parsed)
+
+    assert config.visual_sampling_mode == "sparse_shot"
+    assert config.visual_global_sample_seconds == 3.0
+    assert config.visual_dedup_enabled is True
+    assert config.visual_dedup_threshold == 0.96
+    assert config.embed_batch_size == 7
+    assert config.index_type == "hnsw"
+
+
 def test_parse_trake_json_and_pipe_events(tmp_path):
     path = tmp_path / "events.json"
     path.write_text('{"events":["one","two"]}')
