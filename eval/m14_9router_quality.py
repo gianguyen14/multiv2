@@ -1,4 +1,7 @@
-"""Quality evaluation for the M14 joint relevance signal."""
+"""M14 joint-relevance metric plumbing over a caller-supplied corpus.
+
+The checked-in corpus is a synthetic contract fixture, not quality evidence.
+"""
 
 from __future__ import annotations
 
@@ -233,6 +236,8 @@ def run_quality(
     return {
         "run_metadata": {
             "dataset_fingerprint": corpus.fingerprint,
+            "dataset_kind": corpus.dataset_kind,
+            "quality_claims_allowed": corpus.quality_claims_allowed,
             "encoder": getattr(encoder, "model_name", type(encoder).__name__),
             "scorer": getattr(scorer, "backend_name", type(scorer).__name__),
         },

@@ -26,6 +26,8 @@ def test_valid_corpus_and_statistics(tmp_path):
     assert report["query_count"] == 1
     assert report["candidate_count"] == 1
     assert len(corpus.fingerprint) == 64
+    assert report["dataset_kind"] == "unverified"
+    assert report["quality_claims_allowed"] is False
 
 
 @pytest.mark.parametrize("rows,message", [
@@ -53,4 +55,19 @@ def test_missing_image_path(tmp_path):
     root = tmp_path / "corpus"
     write_corpus(root, candidates=[{"candidate_id": "a", "image_path": "images/missing.png"}])
     with pytest.raises(ValueError, match="missing image path"):
+        load_corpus(root)
+
+
+def test_synthetic_manifest_cannot_authorize_quality_claims(tmp_path):
+    root = tmp_path / "corpus"
+    write_corpus(root)
+    (root / "manifest.json").write_text(
+        json.dumps(
+            {
+                "dataset_kind": "synthetic_contract_fixture",
+                "quality_claims_allowed": True,
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="cannot authorize quality claims"):
         load_corpus(root)

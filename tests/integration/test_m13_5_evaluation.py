@@ -24,6 +24,8 @@ class FakeEncoder:
 def test_same_candidate_evaluation_reports_all_metrics():
     result = run_benchmark("eval/data/m13_5", candidate_ks=(10, 24), final_ks=(5, 10), batch_size=4, repetitions=1, encoder=FakeEncoder())
     assert result["run_metadata"]["dataset_fingerprint"] == load_corpus("eval/data/m13_5").fingerprint
+    assert result["run_metadata"]["dataset_kind"] == "synthetic_contract_fixture"
+    assert result["run_metadata"]["quality_claims_allowed"] is False
     for candidate_k in ("10", "24"):
         report = result["results_by_candidate_k"][candidate_k]
         assert set(report["metrics"]) == {"faiss", "dot_product", "siglip2", "hybrid"}

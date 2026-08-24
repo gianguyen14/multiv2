@@ -122,3 +122,36 @@ def test_unlabeled_template_validation(tmp_path):
     assert report.total_queries == 1
     assert report.labeled_queries == 0
     assert report.unlabeled_queries == 1
+
+
+def test_empty_known_video_set_rejects_any_claimed_video(tmp_path):
+    path = tmp_path / "ground_truth.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "Q1",
+                    "ground_truth": {"video_ids": ["V1"], "frame_ranges": []},
+                }
+            ]
+        )
+    )
+
+    report = validate_ground_truth_file(path, known_video_ids=set())
+
+    assert report.is_valid is False
+    assert any("unknown video V1" in error for error in report.errors)
+
+
+def test_frame_ranges_require_video_identity(tmp_path):
+    path = tmp_path / "ground_truth.json"
+    path.write_text(
+        json.dumps(
+            [{"id": "Q1", "ground_truth": {"frame_ranges": [[1, 2]]}}]
+        )
+    )
+
+    report = validate_ground_truth_file(path)
+
+    assert report.is_valid is False
+    assert any("frame ranges require a video ID" in error for error in report.errors)
