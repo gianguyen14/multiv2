@@ -211,8 +211,9 @@ def refine_coarse_candidates(
     if not np.isfinite(q_vec).all():
         raise ValueError("query_embedding contains non-finite values (NaN or Inf)")
 
-    q_norm = float(np.linalg.norm(q_vec))
-    if q_norm == 0.0 or math.isnan(q_norm):
+    with np.errstate(over="ignore", invalid="ignore"):
+        q_norm = float(np.linalg.norm(q_vec))
+    if not math.isfinite(q_norm) or q_norm == 0.0:
         raise ValueError("query_embedding norm is zero or invalid")
     q_unit = q_vec / q_norm
 
@@ -257,9 +258,12 @@ def refine_coarse_candidates(
             raise ValueError("local embeddings contain non-finite values (NaN or Inf)")
 
         # Normalize local embeddings
-        norms = np.linalg.norm(local_embs, axis=1, keepdims=True)
-        if np.any(norms <= 0.0):
-            raise ValueError("local embeddings contain a zero-norm vector")
+        with np.errstate(over="ignore", invalid="ignore"):
+            norms = np.linalg.norm(local_embs, axis=1, keepdims=True)
+        if not np.isfinite(norms).all() or np.any(norms <= 0.0):
+            raise ValueError(
+                "local embeddings contain a zero-norm vector or overflowed norm"
+            )
         norm_embs = local_embs / norms
 
         # Compute cosine similarity

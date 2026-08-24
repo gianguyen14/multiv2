@@ -1,5 +1,8 @@
 import json
+import os
 from argparse import Namespace
+import subprocess
+import sys
 
 import pytest
 
@@ -192,6 +195,43 @@ def test_ingest_config_preserves_documented_visual_environment(monkeypatch, tmp_
     assert config.index_type == "hnsw"
 
 
+def test_ingest_config_honors_visual_environment_in_subprocess(tmp_path):
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "VISUAL_SAMPLING_MODE": "sparse_shot",
+            "VISUAL_GLOBAL_SAMPLE_SECONDS": "3.25",
+            "VISUAL_DEDUP_ENABLED": "yes",
+            "VISUAL_DEDUP_THRESHOLD": "0.96",
+            "VIDEO_INDEX_TYPE": "hnsw",
+        }
+    )
+    script = (
+        "import json,projectctl; "
+        "a=projectctl.parser().parse_args(['ingest','videos','--processed-root',"
+        f"{str(tmp_path)!r}]); "
+        "c=projectctl._video_ingest_config(a); "
+        "print(json.dumps([c.visual_sampling_mode,c.visual_global_sample_seconds,"
+        "c.visual_dedup_enabled,c.visual_dedup_threshold,c.index_type]))"
+    )
+
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+
+    assert json.loads(completed.stdout) == ["sparse_shot", 3.25, True, 0.96, "hnsw"]
+
+
+def test_invalid_environment_index_type_is_rejected(monkeypatch):
+    monkeypatch.setenv("VIDEO_INDEX_TYPE", "bogus")
+    with pytest.raises(SystemExit):
+        projectctl.parser().parse_args(["index"])
+
+
 def test_tesseract_language_spec_uses_only_installed_languages(monkeypatch):
     monkeypatch.setattr(projectctl, "tesseract_languages", lambda: {"eng"})
     assert projectctl.tesseract_language_spec() == "eng"
@@ -199,8 +239,11 @@ def test_tesseract_language_spec_uses_only_installed_languages(monkeypatch):
     monkeypatch.setattr(projectctl, "tesseract_languages", lambda: {"eng", "vie"})
     assert projectctl.tesseract_language_spec() == "eng+vie"
 
+    monkeypatch.setattr(projectctl, "tesseract_languages", lambda: {"vie"})
+    assert projectctl.tesseract_language_spec() == "vie"
+
     monkeypatch.setattr(projectctl, "tesseract_languages", lambda: set())
-    with pytest.raises(RuntimeError, match="install Tesseract eng or vie"):
+    with pytest.raises(RuntimeError, match="install tesseract eng or vie"):
         projectctl.tesseract_language_spec()
 
 
@@ -224,6 +267,13 @@ def test_asr_resume_does_not_construct_model(monkeypatch, tmp_path):
         raise AssertionError("Faster Whisper must not be constructed for a resumed ASR artifact")
 
     monkeypatch.setattr(backends, "FasterWhisperASRBackend", unexpected)
+    monkeypatch.setattr(
+        projectctl,
+        "tesseract_languages",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("ASR-only resume must not inspect OCR languages")
+        ),
+    )
     report = projectctl._text_pipeline(args(path=str(source), processed_root=str(processed),
         whisper_model="small", device="cpu", ocr_device=None, asr_device=None,
         asr_compute_type=None, limit=None), use_ocr=False, use_asr=True)

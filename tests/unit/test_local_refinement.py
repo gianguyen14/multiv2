@@ -372,6 +372,24 @@ def test_invalid_embedding_inputs_rejected():
             [candidate], q_vec, frame_provider, zero_vector, config=config
         )
 
+    # 5. Finite float32 vectors whose norms overflow are also invalid
+    maximum = np.finfo(np.float32).max
+    with pytest.raises(ValueError, match="norm is zero or invalid"):
+        refine_coarse_candidates(
+            [candidate],
+            np.array([maximum, maximum], dtype=np.float32),
+            frame_provider,
+            MagicMock(),
+            config=config,
+        )
+    overflowed_vector = MagicMock(
+        return_value=np.array([[maximum] * 768], dtype=np.float32)
+    )
+    with pytest.raises(ValueError, match="overflowed"):
+        refine_coarse_candidates(
+            [candidate], q_vec, frame_provider, overflowed_vector, config=config
+        )
+
 
 def test_empty_candidates_and_disabled_mode_invariants():
     q_vec = np.ones(768, dtype=np.float32)

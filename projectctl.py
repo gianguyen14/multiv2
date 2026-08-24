@@ -27,8 +27,14 @@ def tesseract_language_spec():
     installed = tesseract_languages()
     selected = [language for language in ("eng", "vie") if language in installed]
     if not selected:
-        raise RuntimeError("OCR unavailable: install Tesseract eng or vie language data")
+        raise RuntimeError("OCR unavailable: install tesseract eng or vie language data")
     return "+".join(selected)
+
+
+def _index_type(value):
+    if value not in {"flat", "hnsw"}:
+        raise argparse.ArgumentTypeError("index type must be 'flat' or 'hnsw'")
+    return value
 
 
 def _package_version(name):
@@ -348,8 +354,6 @@ def command_ingest(args):
 
 
 def _text_pipeline(args, use_ocr=True, use_asr=True):
-    if use_ocr and not executable("tesseract"):
-        raise RuntimeError("OCR unavailable: install tesseract with eng and vie language packs")
     from backend.app.video.ingest import discover_videos
     from backend.app.video.frame_store import FrameStore, source_hash
     from backend.app.video.m16_text_pipeline import (
@@ -365,20 +369,40 @@ def _text_pipeline(args, use_ocr=True, use_asr=True):
     store = TextEvidenceStore(processed_root)
     frames = FrameStore(processed_root)
 
-    requested_ocr_backend = getattr(args, "ocr_backend", None) or os.getenv("OCR_BACKEND", "auto")
-    from backend.app.runtime.device_policy import probe_paddle
-    paddle_caps = probe_paddle()
+    requested_ocr_backend = (
+        getattr(args, "ocr_backend", None) or os.getenv("OCR_BACKEND", "auto")
+    )
     ocr_device_arg = getattr(args, "ocr_device", None)
     resolved_ocr_backend = requested_ocr_backend
     ocr_languages = None
-    if requested_ocr_backend == "auto":
+    if not use_ocr:
+        ocr_desc = {"backend": "disabled", "languages": None}
+    elif requested_ocr_backend == "auto":
+        from backend.app.runtime.device_policy import probe_paddle
+
+        paddle_caps = probe_paddle()
         if paddle_caps.installed and paddle_caps.cuda_available and ocr_device_arg not in ("cpu", "unavailable"):
-            ocr_desc = {
-                "backend": "adaptive",
-                "primary": {"backend": "paddleocr", "languages": "vi", "device": ocr_device_arg or "cuda:0"},
-                "fallback": {"backend": "tesseract", "languages": "eng+vie"},
-                "routing_mode": "auto",
-            }
+            installed = tesseract_languages()
+            selected = [
+                language for language in ("eng", "vie") if language in installed
+            ]
+            if selected:
+                ocr_languages = "+".join(selected)
+                ocr_desc = {
+                    "backend": "adaptive",
+                    "primary": {"backend": "paddleocr", "languages": "vi", "device": ocr_device_arg or "cuda:0"},
+                    "fallback": {"backend": "tesseract", "languages": ocr_languages},
+                    "routing_mode": "auto",
+                }
+            else:
+                # Paddle remains a valid OCR backend even when no Tesseract
+                # fallback language data is installed.
+                resolved_ocr_backend = "paddleocr"
+                ocr_desc = {
+                    "backend": "paddleocr",
+                    "languages": "vi",
+                    "device": ocr_device_arg or "cuda:0",
+                }
         else:
             resolved_ocr_backend = "tesseract"
             ocr_languages = tesseract_language_spec()
@@ -776,7 +800,12 @@ def parser():
     item.add_argument("--whisper-model", default=FASTER_WHISPER_MODEL)
     item.set_defaults(handler=command_models)
     item = sub.add_parser("index", parents=[common])
-    item.add_argument("--index-type", default=os.getenv("VIDEO_INDEX_TYPE", "flat"), choices=("flat", "hnsw"))
+    item.add_argument(
+        "--index-type",
+        type=_index_type,
+        default=os.getenv("VIDEO_INDEX_TYPE", "flat"),
+        choices=("flat", "hnsw"),
+    )
     item.set_defaults(handler=command_index)
     for name, handler in (("backend", command_server), ("frontend", command_frontend), ("dev", command_dev)):
         item = sub.add_parser(name, parents=[common])
@@ -797,7 +826,12 @@ def parser():
         item.add_argument("--batch-size", type=lambda value: None if value == "auto" else int(value))
         item.add_argument("--preflight-only", action="store_true")
         item.add_argument("--limit", type=int)
-        item.add_argument("--index-type", default=os.getenv("VIDEO_INDEX_TYPE", "flat"), choices=("flat", "hnsw"))
+        item.add_argument(
+            "--index-type",
+            type=_index_type,
+            default=os.getenv("VIDEO_INDEX_TYPE", "flat"),
+            choices=("flat", "hnsw"),
+        )
         item.add_argument("--whisper-model", default=FASTER_WHISPER_MODEL)
         item.set_defaults(handler=handler)
     for name, handler in (("search", command_search), ("kis", command_kis), ("qa", command_qa)):

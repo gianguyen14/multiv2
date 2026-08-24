@@ -101,7 +101,7 @@ def test_sampling_determinism():
         assert sa.frame.timestamp_seconds == sb.frame.timestamp_seconds
 
 
-@pytest.mark.parametrize("invalid_interval", [0, -1.0, -5.0, float("nan"), float("inf"), -float("inf")])
+@pytest.mark.parametrize("invalid_interval", [False, True, 0, -1.0, -5.0, float("nan"), float("inf"), -float("inf")])
 def test_reject_invalid_sampler_interval(invalid_interval):
     """Frame sampler must reject non-positive or non-finite intervals."""
     frames = _create_synthetic_frames(duration_seconds=5.0, fps=30.0)
@@ -150,4 +150,10 @@ def test_video_ingest_config_from_env(monkeypatch):
     # Invalid env value raises
     monkeypatch.setenv("VISUAL_GLOBAL_SAMPLE_SECONDS", "invalid_number")
     with pytest.raises(ValueError, match="invalid VISUAL_GLOBAL_SAMPLE_SECONDS"):
+        VideoIngestConfig.from_env()
+
+
+def test_video_ingest_config_rejects_invalid_boolean_environment(monkeypatch):
+    monkeypatch.setenv("VISUAL_DEDUP_ENABLED", "sometimes")
+    with pytest.raises(ValueError, match="VISUAL_DEDUP_ENABLED must be one of"):
         VideoIngestConfig.from_env()

@@ -1,5 +1,6 @@
 import math
 from dataclasses import dataclass
+from numbers import Real
 from typing import Iterable
 
 from backend.app.video.video_decoder import DecodedFrame
@@ -17,20 +18,42 @@ class SampledFrame:
     shot_id: int | None = None
 
 
+def _validated_frame_timestamp(frame, previous_timestamp):
+    timestamp = frame.timestamp_seconds
+    if timestamp is None:
+        return None
+    if (
+        not isinstance(timestamp, Real)
+        or isinstance(timestamp, bool)
+        or not math.isfinite(timestamp)
+        or timestamp < 0
+    ):
+        raise FrameSamplingError(
+            "frame timestamps must be non-negative finite numbers or None"
+        )
+    timestamp = float(timestamp)
+    if previous_timestamp is not None and timestamp < previous_timestamp:
+        raise FrameSamplingError("frame timestamps must be non-decreasing")
+    return timestamp
+
+
 def iter_sample_frames(frames: Iterable[DecodedFrame], interval_seconds: float = 1.0):
-    if interval_seconds is None or not isinstance(interval_seconds, (int, float)) or math.isnan(interval_seconds) or math.isinf(interval_seconds) or interval_seconds <= 0:
+    if interval_seconds is None or isinstance(interval_seconds, bool) or not isinstance(interval_seconds, (int, float)) or math.isnan(interval_seconds) or math.isinf(interval_seconds) or interval_seconds <= 0:
         raise ValueError("sample interval must be a positive and finite number")
     previous = None
     target = 0.0
     last_selected_index = None
     last_timed = None
+    previous_timestamp = None
     for current in frames:
-        if current.timestamp_seconds is None:
+        current_timestamp = _validated_frame_timestamp(current, previous_timestamp)
+        if current_timestamp is None:
             continue
+        previous_timestamp = current_timestamp
         last_timed = current
         if previous is None:
             previous = current
-        while target <= current.timestamp_seconds:
+        while target <= current_timestamp:
             candidate = previous
             if abs(current.timestamp_seconds - target) < abs(previous.timestamp_seconds - target):
                 candidate = current
@@ -62,7 +85,7 @@ def sample_sparse_shot_frames_with_protection(
     Returns:
         Tuple of (sorted_sampled_frames, protected_source_frame_indices).
     """
-    if interval_seconds is None or not isinstance(interval_seconds, (int, float)) or math.isnan(interval_seconds) or math.isinf(interval_seconds) or interval_seconds <= 0:
+    if interval_seconds is None or isinstance(interval_seconds, bool) or not isinstance(interval_seconds, (int, float)) or math.isnan(interval_seconds) or math.isinf(interval_seconds) or interval_seconds <= 0:
         raise ValueError("sample interval must be a positive and finite number")
 
     # Retain only selected frames while streaming the decoder.  A decoded RGB
@@ -85,7 +108,17 @@ def sample_sparse_shot_frames_with_protection(
             continue
         if s_end < s_start or s_start < 0:
             continue
-        valid_shots.append(((s_start + s_end) / 2.0, shot_idx, s_start, s_end))
+        # Preserve the historical midpoint bit-for-bit for normal inputs, but
+        # avoid overflowing when two individually finite boundaries are large.
+        midpoint_sum = s_start + s_end
+        midpoint = (
+            midpoint_sum / 2.0
+            if math.isfinite(midpoint_sum)
+            else s_start + (s_end - s_start) / 2.0
+        )
+        if not math.isfinite(midpoint):
+            continue
+        valid_shots.append((midpoint, shot_idx, s_start, s_end))
     valid_shots.sort(key=lambda item: (item[0], item[1]))
 
     periodic_target = 0.0
@@ -94,15 +127,18 @@ def sample_sparse_shot_frames_with_protection(
     last_timed = None
     next_shot = 0
     shot_choices: list[tuple[int, SampledFrame]] = []
+    previous_timestamp = None
 
     for current in frames:
-        if current.timestamp_seconds is None:
+        current_timestamp = _validated_frame_timestamp(current, previous_timestamp)
+        if current_timestamp is None:
             continue
+        previous_timestamp = current_timestamp
         last_timed = current
         if previous is None:
             previous = current
 
-        while periodic_target <= current.timestamp_seconds:
+        while periodic_target <= current_timestamp:
             candidate = previous
             if abs(current.timestamp_seconds - periodic_target) < abs(previous.timestamp_seconds - periodic_target):
                 candidate = current
@@ -117,7 +153,7 @@ def sample_sparse_shot_frames_with_protection(
                 last_periodic_index = idx
             periodic_target += interval_seconds
 
-        while next_shot < len(valid_shots) and valid_shots[next_shot][0] <= current.timestamp_seconds:
+        while next_shot < len(valid_shots) and valid_shots[next_shot][0] <= current_timestamp:
             mid_sec, shot_idx, s_start, s_end = valid_shots[next_shot]
             adjacent = [previous] if previous is current else [previous, current]
             in_window = [

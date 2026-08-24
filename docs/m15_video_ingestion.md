@@ -42,6 +42,8 @@ Failures preserve the highest validated checkpoint. On restart, metadata, frame 
 
 Invalidation follows the dependency chain. Sampling interval, submission policy, image format, or image quality rebuild frames, embeddings, and the index while reusing metadata. Encoder identity changes rebuild embeddings and the index while reusing frames. Changing `index_type` republishes only the global index while reusing metadata, frame records/images, and embeddings without decoding or encoding. Batch size and device are execution-only and do not invalidate artifacts.
 
+HNSW generations created before inner-product metric validation may contain L2 distances and are not score-compatible with normalized SigLIP similarity. The loader rejects those generations explicitly; rebuild the global index from the persisted embeddings instead of reusing or reinterpreting it.
+
 M15.2 verifies that clean and interrupted/resumed ingests produce identical deterministic logical artifacts. It also injects failure at the exact atomic `CURRENT` replacement and proves the previous generation remains active, reloadable, searchable, and available alongside a later successful generation.
 
 Directory ingestion isolates corrupt videos and publishes only compatible validated videos. The global index is rebuilt from every compatible completed manifest under the processed root, so later single-video ingestion does not drop older videos.

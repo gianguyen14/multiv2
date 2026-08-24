@@ -241,7 +241,10 @@ class FaissSigLIPIndex:
             if not isinstance(index, faiss.IndexHNSWFlat):
                 raise ValueError("Loaded index is not IndexHNSWFlat")
             if index.metric_type != faiss.METRIC_INNER_PRODUCT:
-                raise ValueError("Loaded HNSW index must use inner-product metric")
+                raise ValueError(
+                    "Loaded HNSW index uses an incompatible metric; rebuild it "
+                    "with inner-product metric"
+                )
 
         instance = cls(embedding_dim=index.d, index_type=index_type)
         instance.index = index

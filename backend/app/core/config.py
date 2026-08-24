@@ -1,8 +1,23 @@
 # Configuration flags for the project
 import os
 
-SIGLIP_ENABLED = os.getenv("SIGLIP_ENABLED", "true").lower() in ("1", "true", "yes")
-SIGLIP2_MODEL = os.getenv("SIGLIP2_MODEL", "google/siglip2-base-patch16-224")
+
+def _environment_bool(name, default):
+    raw_value = os.getenv(name, default)
+    normalized = raw_value.strip().lower()
+    if normalized in {"1", "true", "yes"}:
+        return True
+    if normalized in {"0", "false", "no"}:
+        return False
+    raise ValueError(f"{name} must be one of: 1, 0, true, false, yes, no")
+
+
+SIGLIP_ENABLED = _environment_bool("SIGLIP_ENABLED", "true")
+SIGLIP2_MODEL = os.getenv(
+    "SIGLIP2_MODEL", "google/siglip2-base-patch16-224"
+).strip()
+if not SIGLIP2_MODEL:
+    raise ValueError("SIGLIP2_MODEL must be a non-empty model ID or local path")
 # Long text encoding is isolated behind a mode flag so deployments can restore
 # the historical first-window behavior with SIGLIP_LONG_TEXT_MODE=truncate.
 SIGLIP_LONG_TEXT_MODE = os.getenv("SIGLIP_LONG_TEXT_MODE", "chunk_mean").lower()

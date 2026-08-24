@@ -80,7 +80,10 @@ class AdvancedFaissIndex:
         if set(mapping) != set(range(index.ntotal)):
             raise ValueError("Mapping IDs do not match index positions")
         if index.metric_type != faiss.METRIC_INNER_PRODUCT:
-            raise ValueError("Loaded index must use inner-product metric")
+            raise ValueError(
+                "Loaded index uses an incompatible metric; rebuild it with "
+                "inner-product metric"
+            )
         instance = cls(index.d, index_type)
         instance.index = index
         instance.frame_id_mapping = mapping

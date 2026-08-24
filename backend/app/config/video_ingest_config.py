@@ -10,6 +10,16 @@ def _fingerprint(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def _environment_bool(name, default):
+    raw_value = os.getenv(name, default)
+    normalized = raw_value.strip().lower()
+    if normalized in {"1", "true", "yes"}:
+        return True
+    if normalized in {"0", "false", "no"}:
+        return False
+    raise ValueError(f"{name} must be one of: 1, 0, true, false, yes, no")
+
+
 @dataclass(frozen=True)
 class VideoIngestConfig:
     enabled: bool = False
@@ -87,7 +97,7 @@ class VideoIngestConfig:
             raise ValueError(f"invalid VISUAL_DEDUP_THRESHOLD: {raw_dedup_thresh!r}") from exc
 
         return cls(
-            enabled=os.getenv("VIDEO_INGEST_ENABLED", "false").lower() == "true",
+            enabled=_environment_bool("VIDEO_INGEST_ENABLED", "false"),
             processed_root=Path(os.getenv("VIDEO_PROCESSED_ROOT", "data/processed/videos")),
             sample_interval_seconds=float(os.getenv("VIDEO_SAMPLE_INTERVAL_SECONDS", "1.0")),
             frame_id_policy=os.getenv("VIDEO_FRAME_ID_POLICY", "zero_based"),
@@ -95,11 +105,11 @@ class VideoIngestConfig:
             jpeg_quality=int(os.getenv("VIDEO_JPEG_QUALITY", "90")),
             embed_batch_size=int(os.environ["VIDEO_EMBED_BATCH_SIZE"]) if "VIDEO_EMBED_BATCH_SIZE" in os.environ else None,
             device=os.getenv("VIDEO_INGEST_DEVICE", os.getenv("COMPUTE_DEVICE", "auto")),
-            resume=os.getenv("VIDEO_RESUME", "true").lower() == "true",
+            resume=_environment_bool("VIDEO_RESUME", "true"),
             index_type=os.getenv("VIDEO_INDEX_TYPE", "flat"),
             visual_sampling_mode=os.getenv("VISUAL_SAMPLING_MODE", "legacy").lower(),
             visual_global_sample_seconds=visual_global_sample_seconds,
-            visual_dedup_enabled=os.getenv("VISUAL_DEDUP_ENABLED", "false").lower() in ("true", "1", "yes"),
+            visual_dedup_enabled=_environment_bool("VISUAL_DEDUP_ENABLED", "false"),
             visual_dedup_threshold=visual_dedup_threshold,
         )
 

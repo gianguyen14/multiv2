@@ -4,6 +4,7 @@ import json
 import tempfile
 from pathlib import Path
 
+import faiss
 import numpy as np
 import pytest
 
@@ -76,6 +77,35 @@ class TestFaissSigLIPIndex:
             "opposite",
         ]
         assert [item["score"] for item in results] == pytest.approx([1.0, 0.8, -1.0])
+
+    def test_hnsw_save_load_preserves_inner_product_metric(self, tmp_path):
+        vectors = np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
+        index = FaissSigLIPIndex(embedding_dim=2, index_type="hnsw")
+        index.add(vectors, ["same", "other"])
+        index.save(tmp_path / "frames.faiss", tmp_path / "mapping.json")
+
+        loaded = FaissSigLIPIndex.load(
+            tmp_path / "frames.faiss", tmp_path / "mapping.json"
+        )
+
+        assert loaded.index.metric_type == faiss.METRIC_INNER_PRODUCT
+        assert loaded.search(vectors[0], 1)[0]["score"] == pytest.approx(1.0)
+
+    def test_legacy_l2_hnsw_requires_rebuild(self, tmp_path):
+        vectors = np.array([[1.0, 0.0]], dtype=np.float32)
+        legacy = faiss.IndexHNSWFlat(2, 32)
+        legacy.add(vectors)
+        faiss.write_index(legacy, str(tmp_path / "frames.faiss"))
+        (tmp_path / "mapping.json").write_text(
+            json.dumps(
+                {"index_type": "hnsw", "frame_id_mapping": {"0": "same"}}
+            )
+        )
+
+        with pytest.raises(ValueError, match="rebuild.*inner-product"):
+            FaissSigLIPIndex.load(
+                tmp_path / "frames.faiss", tmp_path / "mapping.json"
+            )
 
     def test_advanced_hnsw_uses_inner_product_scores(self):
         vectors = np.array([[1.0, 0.0], [-1.0, 0.0]], dtype=np.float32)

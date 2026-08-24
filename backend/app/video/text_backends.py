@@ -278,7 +278,7 @@ def create_ocr_backend(name=None, device=None, languages=None):
     if name == "auto":
         paddle_caps = probe_paddle()
         if paddle_caps.installed and paddle_caps.cuda_available and device not in ("cpu", "unavailable"):
-            primary = PaddleOCRBackend(languages=languages or "vi", device=device or "cuda:0", min_confidence=OCR_PADDLE_MIN_CONFIDENCE)
+            primary = PaddleOCRBackend(languages="vi", device=device or "cuda:0", min_confidence=OCR_PADDLE_MIN_CONFIDENCE)
             fallback = TesseractOCRBackend(languages=languages or "eng+vie")
             return AdaptiveOCRBackend(
                 primary=primary,
@@ -378,4 +378,3 @@ class SidecarASRBackend(ASRBackend):
 
     def info(self):
         return {"backend": "sidecar-asr"}
-

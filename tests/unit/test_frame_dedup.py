@@ -255,3 +255,20 @@ def test_empty_record_alignment_is_validated_when_enabled():
 
     with pytest.raises(ValueError, match="Mismatched records count"):
         filter_near_duplicate_frames([], embeddings)
+
+
+def test_boolean_threshold_is_rejected():
+    records = [DummyFrameRecord(0, 0.0)]
+    embeddings = np.array([[1.0, 0.0]], dtype=np.float32)
+    with pytest.raises(ValueError, match="finite number"):
+        filter_near_duplicate_frames(records, embeddings, threshold=True)
+
+
+def test_finite_values_with_overflowed_norm_are_rejected():
+    records = [DummyFrameRecord(0, 0.0)]
+    maximum = np.finfo(np.float32).max
+    embeddings = np.array([[maximum, maximum]], dtype=np.float32)
+    assert np.isfinite(embeddings).all()
+
+    with pytest.raises(ValueError, match="overflowed"):
+        filter_near_duplicate_frames(records, embeddings)
