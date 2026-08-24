@@ -58,24 +58,7 @@ jobs:
           HF_HUB_OFFLINE: '1'
           TRANSFORMERS_OFFLINE: '1'
         run: |
-          # Historical milestone tests below import eval helpers that are not
-          # present in the frozen repository. Keep them in source for history,
-          # but exclude them from the current RC2 CPU gate.
-          #
-          # The SigLIP tests listed below intentionally load real Hugging Face
-          # model/config artifacts. The CPU CI gate is offline and has no model
-          # snapshot, so those checks belong to the real-model/GPU validation.
-          pytest \
-            -m 'not slow and not real_model and not network and not gpu' \
-            --ignore=tests/integration/test_m12_quality.py \
-            --ignore=tests/integration/test_m13_5_evaluation.py \
-            --ignore=tests/integration/test_m14_evaluation.py \
-            --ignore=tests/integration/test_faiss_siglip_index_integration.py \
-            --ignore=tests/unit/test_m13_5_corpus.py \
-            --ignore=tests/unit/test_m22_end_to_end_benchmark.py \
-            --deselect=tests/unit/test_gpu_rc2_stabilization.py::test_siglip2_vocab_and_token_invariants \
-            --deselect=tests/unit/test_siglip2.py::TestSigLIP2Encoder::test_embedding_dim_property \
-            --deselect=tests/unit/test_siglip2.py::TestSigLIP2Encoder::test_clear_cache
+          pytest -m 'not slow and not real_model and not network and not gpu'
 
   docker:
     name: Docker build gate

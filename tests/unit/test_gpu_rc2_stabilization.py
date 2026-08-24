@@ -79,6 +79,7 @@ def test_paddleocr_status_diagnostics():
         assert "paddleocr is not installed" in status["error"] or "not downloaded" in status["error"]
 
 
+@pytest.mark.real_model
 def test_siglip2_vocab_and_token_invariants():
     """Verifies SigLIP2 configuration and ensures embeddings remain valid."""
     cfg = AutoConfig.from_pretrained("google/siglip2-base-patch16-224")
