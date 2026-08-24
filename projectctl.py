@@ -22,6 +22,15 @@ def tesseract_languages():
     return set(result.stdout.splitlines()[1:]) if result.returncode == 0 else set()
 
 
+def tesseract_language_spec():
+    """Return the strongest installed Tesseract language combination."""
+    installed = tesseract_languages()
+    selected = [language for language in ("eng", "vie") if language in installed]
+    if not selected:
+        raise RuntimeError("OCR unavailable: install Tesseract eng or vie language data")
+    return "+".join(selected)
+
+
 def _package_version(name):
     try:
         from importlib.metadata import version
@@ -360,6 +369,8 @@ def _text_pipeline(args, use_ocr=True, use_asr=True):
     from backend.app.runtime.device_policy import probe_paddle
     paddle_caps = probe_paddle()
     ocr_device_arg = getattr(args, "ocr_device", None)
+    resolved_ocr_backend = requested_ocr_backend
+    ocr_languages = None
     if requested_ocr_backend == "auto":
         if paddle_caps.installed and paddle_caps.cuda_available and ocr_device_arg not in ("cpu", "unavailable"):
             ocr_desc = {
@@ -369,13 +380,16 @@ def _text_pipeline(args, use_ocr=True, use_asr=True):
                 "routing_mode": "auto",
             }
         else:
-            ocr_desc = {"backend": "tesseract", "languages": "eng+vie"}
+            resolved_ocr_backend = "tesseract"
+            ocr_languages = tesseract_language_spec()
+            ocr_desc = {"backend": "tesseract", "languages": ocr_languages}
     elif requested_ocr_backend == "paddleocr":
         ocr_desc = {"backend": "paddleocr", "languages": "vi", "device": ocr_device_arg or "auto"}
     elif requested_ocr_backend == "easyocr":
         ocr_desc = {"backend": "easyocr", "languages": ["en", "vi"]}
     else:
-        ocr_desc = {"backend": "tesseract", "languages": "eng+vie"}
+        ocr_languages = tesseract_language_spec()
+        ocr_desc = {"backend": "tesseract", "languages": ocr_languages}
 
     whisper_model = getattr(args, "whisper_model", "small")
     device_name = getattr(args, "asr_device", None) or getattr(args, "device", "auto")
@@ -404,7 +418,11 @@ def _text_pipeline(args, use_ocr=True, use_asr=True):
                 needs_asr = True
                 break
 
-    ocr = create_ocr_backend(name=requested_ocr_backend, device=ocr_device_arg) if needs_ocr else type("NoOCR", (), {
+    ocr = create_ocr_backend(
+        name=resolved_ocr_backend,
+        device=ocr_device_arg,
+        languages=ocr_languages,
+    ) if needs_ocr else type("NoOCR", (), {
         "extract": lambda self, paths: [{"text": "", "boxes": [], "confidence": None} for _ in paths],
         "info": lambda self: ocr_desc,
         "identity": lambda self: f"{ocr_desc['backend']}:{ocr_desc.get('languages', '')}",

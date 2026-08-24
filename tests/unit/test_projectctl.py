@@ -1,6 +1,8 @@
 import json
 from argparse import Namespace
 
+import pytest
+
 import projectctl
 
 
@@ -188,6 +190,18 @@ def test_ingest_config_preserves_documented_visual_environment(monkeypatch, tmp_
     assert config.visual_dedup_threshold == 0.96
     assert config.embed_batch_size == 7
     assert config.index_type == "hnsw"
+
+
+def test_tesseract_language_spec_uses_only_installed_languages(monkeypatch):
+    monkeypatch.setattr(projectctl, "tesseract_languages", lambda: {"eng"})
+    assert projectctl.tesseract_language_spec() == "eng"
+
+    monkeypatch.setattr(projectctl, "tesseract_languages", lambda: {"eng", "vie"})
+    assert projectctl.tesseract_language_spec() == "eng+vie"
+
+    monkeypatch.setattr(projectctl, "tesseract_languages", lambda: set())
+    with pytest.raises(RuntimeError, match="install Tesseract eng or vie"):
+        projectctl.tesseract_language_spec()
 
 
 def test_parse_trake_json_and_pipe_events(tmp_path):
