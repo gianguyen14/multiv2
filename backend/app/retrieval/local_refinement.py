@@ -73,6 +73,12 @@ def generate_candidate_regions(
 
     if window_seconds <= 0 or math.isnan(window_seconds) or math.isinf(window_seconds):
         raise ValueError("window_seconds must be a positive finite number")
+    if (
+        not isinstance(max_regions, int)
+        or isinstance(max_regions, bool)
+        or max_regions < 1
+    ):
+        raise ValueError("max_regions must be an integer >= 1")
 
     # 1. Group candidates by video_id
     by_video: Dict[str, List[CoarseCandidate]] = {}
@@ -252,7 +258,8 @@ def refine_coarse_candidates(
 
         # Normalize local embeddings
         norms = np.linalg.norm(local_embs, axis=1, keepdims=True)
-        norms[norms == 0.0] = 1.0
+        if np.any(norms <= 0.0):
+            raise ValueError("local embeddings contain a zero-norm vector")
         norm_embs = local_embs / norms
 
         # Compute cosine similarity
@@ -282,7 +289,21 @@ def refine_coarse_candidates(
         if best_fid is None and best_src_idx is not None:
             best_fid = f"{region.video_id}:{best_src_idx:09d}"
 
-        origin_c = region.origin_candidates[0] if region.origin_candidates else None
+        origin_c = (
+            min(
+                region.origin_candidates,
+                key=lambda candidate: (
+                    candidate.coarse_rank,
+                    candidate.video_id,
+                    candidate.timestamp_seconds,
+                    candidate.source_frame_index_zero_based
+                    if candidate.source_frame_index_zero_based is not None
+                    else -1,
+                ),
+            )
+            if region.origin_candidates
+            else None
+        )
 
         refined_results.append(
             RefinedCandidate(

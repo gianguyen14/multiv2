@@ -74,9 +74,14 @@ def sample_sparse_shot_frames_with_protection(
         if not isinstance(boundary, (tuple, list)) or len(boundary) != 2:
             continue
         s_start, s_end = boundary
-        if not isinstance(s_start, (int, float)) or not isinstance(s_end, (int, float)):
-            continue
-        if math.isnan(s_start) or math.isnan(s_end) or math.isinf(s_start) or math.isinf(s_end):
+        if (
+            not isinstance(s_start, (int, float))
+            or isinstance(s_start, bool)
+            or not isinstance(s_end, (int, float))
+            or isinstance(s_end, bool)
+            or not math.isfinite(s_start)
+            or not math.isfinite(s_end)
+        ):
             continue
         if s_end < s_start or s_start < 0:
             continue
@@ -119,36 +124,37 @@ def sample_sparse_shot_frames_with_protection(
                 frame for frame in adjacent
                 if s_start <= frame.timestamp_seconds <= s_end
             ]
-            candidates = in_window or adjacent
-            best_frame = min(
-                candidates,
-                key=lambda frame: (
-                    abs(frame.timestamp_seconds - mid_sec),
-                    frame.source_frame_index_zero_based,
-                ),
-            )
-            shot_choices.append((shot_idx, SampledFrame(
-                best_frame,
-                mid_sec,
-                sampling_reason="shot",
-                shot_id=shot_idx,
-            )))
+            if in_window:
+                best_frame = min(
+                    in_window,
+                    key=lambda frame: (
+                        abs(frame.timestamp_seconds - mid_sec),
+                        frame.source_frame_index_zero_based,
+                    ),
+                )
+                shot_choices.append((shot_idx, SampledFrame(
+                    best_frame,
+                    mid_sec,
+                    sampling_reason="shot",
+                    shot_id=shot_idx,
+                )))
             next_shot += 1
         previous = current
 
     if last_timed is None:
         raise FrameSamplingError("video has no usable frame timestamps")
 
-    # Shot midpoints beyond the last decoded timestamp resolve to the last
-    # frame, matching the historical nearest-frame fallback.
+    # A trailing shot is valid only when the final decoded frame lies inside
+    # the detector interval. Out-of-timeline intervals are ignored.
     while next_shot < len(valid_shots):
-        mid_sec, shot_idx, _, _ = valid_shots[next_shot]
-        shot_choices.append((shot_idx, SampledFrame(
-            last_timed,
-            mid_sec,
-            sampling_reason="shot",
-            shot_id=shot_idx,
-        )))
+        mid_sec, shot_idx, s_start, s_end = valid_shots[next_shot]
+        if s_start <= last_timed.timestamp_seconds <= s_end:
+            shot_choices.append((shot_idx, SampledFrame(
+                last_timed,
+                mid_sec,
+                sampling_reason="shot",
+                shot_id=shot_idx,
+            )))
         next_shot += 1
 
     # Preserve the historical collision rule: when multiple input shots map
@@ -210,20 +216,9 @@ def extract_shot_representative_indices(
     """Identify the exact source frame indices selected as shot midpoint representatives."""
     if not shot_boundaries:
         return set()
-    frame_list = [f for f in frames if f.timestamp_seconds is not None]
-    if not frame_list:
-        return set()
-    protected = set()
-    for s_start, s_end in shot_boundaries:
-        if not isinstance(s_start, (int, float)) or not isinstance(s_end, (int, float)):
-            continue
-        if math.isnan(s_start) or math.isnan(s_end) or math.isinf(s_start) or math.isinf(s_end):
-            continue
-        if s_end < s_start or s_start < 0:
-            continue
-        mid_sec = (s_start + s_end) / 2.0
-        in_window = [f for f in frame_list if s_start <= f.timestamp_seconds <= s_end]
-        candidates = in_window if in_window else frame_list
-        best_frame = min(candidates, key=lambda f: (abs(f.timestamp_seconds - mid_sec), f.source_frame_index_zero_based))
-        protected.add(best_frame.source_frame_index_zero_based)
+    _, protected = sample_sparse_shot_frames_with_protection(
+        frames,
+        interval_seconds=1e300,
+        shot_boundaries=shot_boundaries,
+    )
     return protected

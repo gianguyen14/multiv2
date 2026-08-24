@@ -31,13 +31,8 @@ def filter_near_duplicate_frames(
     Returns:
         Tuple of (retained_records, retained_embeddings, retained_indices).
     """
-    if not enabled or len(records) == 0:
+    if not enabled:
         return list(records), embeddings, list(range(len(records)))
-
-    if len(records) != len(embeddings):
-        raise ValueError(
-            f"Mismatched records count ({len(records)}) and embeddings count ({len(embeddings)})"
-        )
 
     if (
         threshold is None
@@ -51,12 +46,21 @@ def filter_near_duplicate_frames(
 
     if not isinstance(embeddings, np.ndarray):
         embeddings = np.asarray(embeddings, dtype=np.float32)
-    if embeddings.ndim != 2:
+    if embeddings.ndim != 2 or embeddings.dtype != np.float32:
         raise ValueError("embeddings must be a 2D float32 array")
+    if len(records) != len(embeddings):
+        raise ValueError(
+            f"Mismatched records count ({len(records)}) and embeddings count ({len(embeddings)})"
+        )
+    if not np.isfinite(embeddings).all():
+        raise ValueError("embeddings must contain only finite values")
+    if len(records) == 0:
+        return [], embeddings, []
 
     # Normalize vectors to ensure exact cosine similarity via dot product
     norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
-    norms[norms == 0.0] = 1.0
+    if np.any(norms <= 0.0):
+        raise ValueError("embeddings must not contain zero-norm vectors")
     norm_embs = embeddings / norms
 
     protected_set: Set[int] = set(protected_source_frame_indices or [])
