@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from backend.app.indexes.advanced_faiss_index import AdvancedFaissIndex
 from backend.app.indexes.faiss_siglip_index import FaissSigLIPIndex
 
 
@@ -58,6 +59,33 @@ class TestFaissSigLIPIndex:
         assert results[1]["rank"] == 2
         assert results[2]["rank"] == 3
         assert results[0]["score"] >= results[1]["score"] >= results[2]["score"]
+
+    def test_hnsw_uses_inner_product_scores(self):
+        """HNSW must preserve the cosine/IP score contract used by downstream ranking."""
+        vectors = np.array(
+            [[1.0, 0.0], [0.8, 0.6], [-1.0, 0.0]], dtype=np.float32
+        )
+        index = FaissSigLIPIndex(embedding_dim=2, index_type="hnsw")
+        index.add(vectors, ["exact", "near", "opposite"])
+
+        results = index.search(vectors[0], 3)
+
+        assert [item["frame_id"] for item in results] == [
+            "exact",
+            "near",
+            "opposite",
+        ]
+        assert [item["score"] for item in results] == pytest.approx([1.0, 0.8, -1.0])
+
+    def test_advanced_hnsw_uses_inner_product_scores(self):
+        vectors = np.array([[1.0, 0.0], [-1.0, 0.0]], dtype=np.float32)
+        index = AdvancedFaissIndex(embedding_dim=2, index_type="hnsw")
+        index.add(vectors, ["same", "opposite"])
+
+        results = index.search(vectors[0], 2)
+
+        assert [item["frame_id"] for item in results] == ["same", "opposite"]
+        assert [item["score"] for item in results] == pytest.approx([1.0, -1.0])
 
     def test_mapping_correctness(self, sample_vectors, sample_frame_ids):
         """Test vector ID to frame ID mapping."""

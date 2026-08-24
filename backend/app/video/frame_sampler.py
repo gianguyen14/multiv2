@@ -47,6 +47,47 @@ def sample_frames(frames: Iterable[DecodedFrame], interval_seconds: float = 1.0)
     return list(iter_sample_frames(frames, interval_seconds))
 
 
+def _shot_representatives(
+    frame_list: list[DecodedFrame],
+    shot_boundaries: list[tuple[float, float]] | None,
+):
+    """Yield valid shot ordinals and their nearest in-shot midpoint frames."""
+    if not shot_boundaries:
+        return
+    for shot_idx, boundary in enumerate(shot_boundaries):
+        if not isinstance(boundary, (tuple, list)) or len(boundary) != 2:
+            continue
+        s_start, s_end = boundary
+        if (
+            not isinstance(s_start, (int, float))
+            or isinstance(s_start, bool)
+            or not isinstance(s_end, (int, float))
+            or isinstance(s_end, bool)
+            or not math.isfinite(s_start)
+            or not math.isfinite(s_end)
+            or s_start < 0
+            or s_end < s_start
+        ):
+            continue
+        in_window = [
+            frame
+            for frame in frame_list
+            if s_start <= frame.timestamp_seconds <= s_end
+        ]
+        if not in_window:
+            # A detector interval outside the decoded timeline is not a valid shot.
+            continue
+        midpoint = (s_start + s_end) / 2.0
+        best_frame = min(
+            in_window,
+            key=lambda frame: (
+                abs(frame.timestamp_seconds - midpoint),
+                frame.source_frame_index_zero_based,
+            ),
+        )
+        yield shot_idx, midpoint, best_frame
+
+
 def sample_sparse_shot_frames_with_protection(
     frames: Iterable[DecodedFrame],
     interval_seconds: float = 5.0,
@@ -78,21 +119,13 @@ def sample_sparse_shot_frames_with_protection(
 
     # 2. Shot midpoint sampling (if shot boundaries are provided)
     shot_map: dict[int, SampledFrame] = {}
-    if shot_boundaries:
-        for shot_idx, (s_start, s_end) in enumerate(shot_boundaries):
-            if not isinstance(s_start, (int, float)) or not isinstance(s_end, (int, float)):
-                continue
-            if math.isnan(s_start) or math.isnan(s_end) or math.isinf(s_start) or math.isinf(s_end):
-                continue
-            if s_end < s_start or s_start < 0:
-                continue
-            mid_sec = (s_start + s_end) / 2.0
-            # Prefer candidate frames within the shot's temporal window [s_start, s_end]
-            in_window = [f for f in frame_list if s_start <= f.timestamp_seconds <= s_end]
-            candidates = in_window if in_window else frame_list
-            best_frame = min(candidates, key=lambda f: (abs(f.timestamp_seconds - mid_sec), f.source_frame_index_zero_based))
-            idx = best_frame.source_frame_index_zero_based
-            shot_map[idx] = SampledFrame(best_frame, mid_sec, sampling_reason="shot", shot_id=shot_idx)
+    for shot_idx, midpoint, best_frame in _shot_representatives(
+        frame_list, shot_boundaries
+    ):
+        idx = best_frame.source_frame_index_zero_based
+        shot_map[idx] = SampledFrame(
+            best_frame, midpoint, sampling_reason="shot", shot_id=shot_idx
+        )
 
     # 3. Merge & Deduplicate exact source frame indices with provenance tracking
     merged_map: dict[int, SampledFrame] = {}
@@ -150,17 +183,7 @@ def extract_shot_representative_indices(
     frame_list = [f for f in frames if f.timestamp_seconds is not None]
     if not frame_list:
         return set()
-    protected = set()
-    for s_start, s_end in shot_boundaries:
-        if not isinstance(s_start, (int, float)) or not isinstance(s_end, (int, float)):
-            continue
-        if math.isnan(s_start) or math.isnan(s_end) or math.isinf(s_start) or math.isinf(s_end):
-            continue
-        if s_end < s_start or s_start < 0:
-            continue
-        mid_sec = (s_start + s_end) / 2.0
-        in_window = [f for f in frame_list if s_start <= f.timestamp_seconds <= s_end]
-        candidates = in_window if in_window else frame_list
-        best_frame = min(candidates, key=lambda f: (abs(f.timestamp_seconds - mid_sec), f.source_frame_index_zero_based))
-        protected.add(best_frame.source_frame_index_zero_based)
-    return protected
+    return {
+        frame.source_frame_index_zero_based
+        for _, _, frame in _shot_representatives(frame_list, shot_boundaries)
+    }

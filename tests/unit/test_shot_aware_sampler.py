@@ -7,6 +7,7 @@ from PIL import Image
 
 from backend.app.config.video_ingest_config import VideoIngestConfig
 from backend.app.shot_detection.base import ShotDetector
+from backend.app.video.m15_ingestion_pipeline import _normalize_detected_shots
 from backend.app.video.frame_sampler import (
     FrameSamplingError,
     iter_sample_frames,
@@ -153,6 +154,37 @@ def test_invalid_detector_output_handled_gracefully():
     # Valid shot [2.0, 3.0] frame 75 is retained, malformed entries skipped
     assert 75 in indices
     assert indices == [0, 75, 150, 300]
+
+
+def test_malformed_shape_and_out_of_timeline_shots_are_skipped():
+    frames = _create_synthetic_frames(duration_seconds=10.0, fps=30.0)
+    malformed_shots = [
+        None,
+        (1.0,),
+        (1.0, 2.0, 3.0),
+        (False, 2.0),
+        (20.0, 21.0),
+        (2.0, 3.0),
+    ]
+
+    sampled = sample_sparse_shot_frames(
+        frames, interval_seconds=5.0, shot_boundaries=malformed_shots
+    )
+
+    assert [item.frame.source_frame_index_zero_based for item in sampled] == [
+        0,
+        75,
+        150,
+        300,
+    ]
+    shot_item = next(item for item in sampled if item.sampling_reason == "shot")
+    assert shot_item.shot_id == 5
+
+
+def test_detector_millisecond_normalization_preserves_valid_intervals():
+    raw = [None, (1,), (False, 1000), (2000, 1000), (1000, 2000)]
+
+    assert _normalize_detected_shots(raw) == [(1.0, 2.0)]
 
 
 def test_sparse_shot_determinism():

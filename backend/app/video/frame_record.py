@@ -1,3 +1,4 @@
+import math
 from dataclasses import asdict, dataclass
 from typing import Optional
 
@@ -20,25 +21,50 @@ class FrameRecord:
     shot_id: Optional[int] = None
     sampling_reason: Optional[str] = "periodic"
 
+    def __post_init__(self):
+        if not isinstance(self.video_id, str) or not self.video_id.strip():
+            raise ValueError("video_id must be a non-empty string")
+        if (
+            not isinstance(self.source_frame_index_zero_based, int)
+            or isinstance(self.source_frame_index_zero_based, bool)
+            or self.source_frame_index_zero_based < 0
+        ):
+            raise ValueError("source frame index must be a non-negative integer")
+        expected_uid = f"{self.video_id}:{self.source_frame_index_zero_based:09d}"
+        if self.frame_uid != expected_uid or self.embedding_id != expected_uid:
+            raise ValueError("frame and embedding IDs must match canonical provenance")
+        if self.timestamp_seconds is not None and (
+            not isinstance(self.timestamp_seconds, (int, float))
+            or isinstance(self.timestamp_seconds, bool)
+            or not math.isfinite(self.timestamp_seconds)
+            or self.timestamp_seconds < 0
+        ):
+            raise ValueError("timestamp_seconds must be non-negative and finite")
+        if self.sampling_reason not in {None, "periodic", "shot", "periodic+shot"}:
+            raise ValueError(f"invalid sampling_reason: {self.sampling_reason!r}")
+        if self.shot_id is not None and (
+            not isinstance(self.shot_id, int)
+            or isinstance(self.shot_id, bool)
+            or self.shot_id < 0
+        ):
+            raise ValueError(f"invalid shot_id: {self.shot_id!r}")
+        if self.sampling_reason in {None, "periodic"} and self.shot_id is not None:
+            raise ValueError(
+                f"{self.sampling_reason or 'legacy'} sampling reason must have "
+                f"shot_id=None, got {self.shot_id!r}"
+            )
+        if self.sampling_reason in {"shot", "periodic+shot"} and self.shot_id is None:
+            raise ValueError(
+                f"{self.sampling_reason} sampling reason must have a non-negative "
+                f"integer shot_id, got {self.shot_id!r}"
+            )
+
     @classmethod
     def create(cls, *, video_id, source_frame_index_zero_based, submission_frame_id,
                timestamp_seconds, pts, width, height, image_path,
                sample_interval_seconds, ingestion_version,
                shot_id: Optional[int] = None,
                sampling_reason: Optional[str] = "periodic"):
-        if source_frame_index_zero_based < 0:
-            raise ValueError("source frame index must be non-negative")
-        if sampling_reason is not None and sampling_reason not in {"periodic", "shot", "periodic+shot"}:
-            raise ValueError(f"invalid sampling_reason: {sampling_reason!r}")
-        if sampling_reason == "periodic":
-            if shot_id is not None:
-                raise ValueError(f"periodic sampling reason must have shot_id=None, got {shot_id!r}")
-        elif sampling_reason in {"shot", "periodic+shot"}:
-            if shot_id is None or not isinstance(shot_id, int) or isinstance(shot_id, bool) or shot_id < 0:
-                raise ValueError(f"{sampling_reason} sampling reason must have a non-negative integer shot_id, got {shot_id!r}")
-        if shot_id is not None:
-            if not isinstance(shot_id, int) or isinstance(shot_id, bool) or shot_id < 0:
-                raise ValueError(f"invalid shot_id: {shot_id!r}")
         frame_uid = f"{video_id}:{source_frame_index_zero_based:09d}"
         return cls(frame_uid, video_id, source_frame_index_zero_based,
                    submission_frame_id, timestamp_seconds, pts, width, height,

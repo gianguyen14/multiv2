@@ -137,6 +137,12 @@ def test_max_regions_truncates_to_strongest():
     assert [r.best_coarse_rank for r in regions] == [0, 1, 2, 3, 4]
 
 
+def test_region_generation_rejects_invalid_max_regions():
+    candidate = CoarseCandidate(video_id="v1", timestamp_seconds=10.0)
+    with pytest.raises(ValueError, match="max_regions must be an integer >= 1"):
+        generate_candidate_regions([candidate], max_regions=0)
+
+
 # ============================================================================
 # 3. LOCAL TIMESTAMP GENERATION TESTS
 # ============================================================================
@@ -234,6 +240,27 @@ def test_refinement_tie_break_earliest_timestamp():
     assert len(refined) == 1
     assert refined[0].refined_timestamp_seconds == 10.0  # Earlier timestamp selected
     assert refined[0].refined_source_frame_index == 100
+
+
+def test_merged_region_uses_best_ranked_origin_candidate():
+    q_vec = np.array([1.0, 0.0], dtype=np.float32)
+    frame = SyntheticLocalFrame(22.0, 220, "v1:000000220")
+    earlier_but_weaker = CoarseCandidate(
+        video_id="v1", timestamp_seconds=20.0, coarse_rank=5
+    )
+    later_but_stronger = CoarseCandidate(
+        video_id="v1", timestamp_seconds=25.0, coarse_rank=1
+    )
+
+    refined = refine_coarse_candidates(
+        [earlier_but_weaker, later_but_stronger],
+        q_vec,
+        MagicMock(return_value=[frame]),
+        MagicMock(return_value=np.array([[1.0, 0.0]], dtype=np.float32)),
+        config=LocalRefineConfig(enabled=True),
+    )
+
+    assert refined[0].origin_candidate is later_but_stronger
 
 
 # ============================================================================
@@ -337,6 +364,13 @@ def test_invalid_embedding_inputs_rejected():
     emb_wrong_dim = MagicMock(return_value=np.ones((1, 512), dtype=np.float32))
     with pytest.raises(ValueError, match="Dimension mismatch between local embeddings"):
         refine_coarse_candidates([candidate], q_vec, frame_provider, emb_wrong_dim, config=config)
+
+    # 4. Zero-norm local vectors do not produce meaningful cosine scores
+    zero_vector = MagicMock(return_value=np.zeros((1, 768), dtype=np.float32))
+    with pytest.raises(ValueError, match="zero-norm vector"):
+        refine_coarse_candidates(
+            [candidate], q_vec, frame_provider, zero_vector, config=config
+        )
 
 
 def test_empty_candidates_and_disabled_mode_invariants():

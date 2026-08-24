@@ -223,3 +223,35 @@ def test_dedup_determinism():
     _, _, ind_2 = filter_near_duplicate_frames(records, embs, protected_source_frame_indices=protected, threshold=0.97)
 
     assert ind_1 == ind_2
+
+
+@pytest.mark.parametrize(
+    "bad_value,error",
+    [
+        (float("nan"), "finite values"),
+        (float("inf"), "finite values"),
+        (0.0, "zero-norm"),
+    ],
+)
+def test_malformed_embedding_rows_are_rejected(bad_value, error):
+    records = [DummyFrameRecord(0, 0.0)]
+    embeddings = np.zeros((1, 4), dtype=np.float32)
+    embeddings[0, 0] = bad_value
+
+    with pytest.raises(ValueError, match=error):
+        filter_near_duplicate_frames(records, embeddings)
+
+
+def test_non_float32_embeddings_are_rejected():
+    records = [DummyFrameRecord(0, 0.0)]
+    embeddings = np.array([[1.0, 0.0]], dtype=np.float64)
+
+    with pytest.raises(ValueError, match="2D float32"):
+        filter_near_duplicate_frames(records, embeddings)
+
+
+def test_empty_record_alignment_is_validated_when_enabled():
+    embeddings = np.array([[1.0, 0.0]], dtype=np.float32)
+
+    with pytest.raises(ValueError, match="Mismatched records count"):
+        filter_near_duplicate_frames([], embeddings)

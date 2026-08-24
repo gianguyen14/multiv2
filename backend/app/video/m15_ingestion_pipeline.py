@@ -1,3 +1,4 @@
+import math
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -13,6 +14,28 @@ from backend.app.video.frame_sampler import iter_sample_frames, sample_sparse_sh
 from backend.app.video.frame_store import FrameStore, source_hash
 from backend.app.video.ingest_manifest import IngestManifest
 from backend.app.video.video_decoder import inspect_video, iter_frames
+
+
+def _normalize_detected_shots(raw_shots):
+    """Convert valid detector millisecond intervals to seconds, skipping noise."""
+    normalized = []
+    for boundary in raw_shots or []:
+        if not isinstance(boundary, (list, tuple)) or len(boundary) != 2:
+            continue
+        start_ms, end_ms = boundary
+        if (
+            not isinstance(start_ms, (int, float))
+            or isinstance(start_ms, bool)
+            or not isinstance(end_ms, (int, float))
+            or isinstance(end_ms, bool)
+            or not math.isfinite(start_ms)
+            or not math.isfinite(end_ms)
+            or start_ms < 0
+            or end_ms < start_ms
+        ):
+            continue
+        normalized.append((start_ms / 1000.0, end_ms / 1000.0))
+    return normalized
 
 
 class VideoIngestionPipeline:
@@ -90,11 +113,7 @@ class VideoIngestionPipeline:
                     if self.shot_detector is not None:
                         try:
                             raw_shots = self.shot_detector.detect_shots(path)
-                            shot_boundaries = [
-                                (s / 1000.0, e / 1000.0)
-                                for s, e in raw_shots
-                                if isinstance(s, (int, float)) and isinstance(e, (int, float)) and e >= s and s >= 0
-                            ]
+                            shot_boundaries = _normalize_detected_shots(raw_shots)
                         except Exception:
                             shot_boundaries = None
                     sampled_items, protected_set = sample_sparse_shot_frames_with_protection(
@@ -146,7 +165,13 @@ class VideoIngestionPipeline:
                         or not np.allclose(norms, 1.0, atol=1e-5)):
                     raise ValueError("invalid frame embeddings")
                 if self.config.visual_dedup_enabled:
-                    protected = self._protected_indices_by_video.get(video_id, set())
+                    protected = self._protected_indices_by_video.get(video_id)
+                    if protected is None:
+                        protected = {
+                            record.source_frame_index_zero_based
+                            for record in records
+                            if record.sampling_reason in {"shot", "periodic+shot"}
+                        }
                     records, embeddings, _ = filter_near_duplicate_frames(
                         records,
                         embeddings,

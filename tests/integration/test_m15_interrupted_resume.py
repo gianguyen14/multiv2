@@ -10,6 +10,36 @@ from backend.app.video.m15_ingestion_pipeline import VideoIngestionPipeline
 from tests.m15_support import MeanRGBEncoder
 
 
+class IdenticalEncoder:
+    embedding_dim = 4
+
+    def __init__(self, revision="v1"):
+        self.revision = revision
+        self.calls = 0
+
+    def identity(self):
+        return {
+            "provider": "test",
+            "model_name": "identical",
+            "revision": self.revision,
+            "embedding_dim": 4,
+            "normalization": "l2",
+        }
+
+    def encode_image(self, images, batch_size=None, normalize=True):
+        self.calls += 1
+        return np.repeat(
+            np.array([[1.0, 0.0, 0.0, 0.0]], dtype=np.float32),
+            len(images),
+            axis=0,
+        )
+
+
+class SingleShotDetector:
+    def detect_shots(self, video_path):
+        return [(1000, 2000)]
+
+
 def logical_artifacts(root):
     pipeline = VideoIngestionPipeline(MeanRGBEncoder(), VideoIngestConfig(processed_root=root))
     store = pipeline.store
@@ -66,3 +96,53 @@ def test_forced_interruption_resumes_from_highest_valid_stage(tmp_path, stage, e
     assert list(map(int, mapping)) == list(range(len(mapping)))
     assert all(payloads[frame_uid]["candidate_id"] == payloads[frame_uid]["frame_uid"] == frame_uid
         for frame_uid in mapping.values())
+
+
+def test_dedup_resume_reconstructs_shot_protection_from_records(tmp_path):
+    config = VideoIngestConfig(
+        processed_root=tmp_path,
+        visual_sampling_mode="sparse_shot",
+        visual_global_sample_seconds=5.0,
+        visual_dedup_enabled=True,
+    )
+
+    def fail_after_frames(name, context):
+        if name == "after_frames":
+            raise RuntimeError("forced after_frames")
+
+    with pytest.raises(RuntimeError, match="forced after_frames"):
+        VideoIngestionPipeline(
+            IdenticalEncoder(),
+            config,
+            failpoint=fail_after_frames,
+            shot_detector=SingleShotDetector(),
+        ).ingest_video("tests/fixtures/test_5s.mp4")
+
+    result = VideoIngestionPipeline(
+        IdenticalEncoder(), config, shot_detector=SingleShotDetector()
+    ).ingest_video("tests/fixtures/test_5s.mp4")
+    records = VideoIngestionPipeline(
+        IdenticalEncoder(), config, shot_detector=SingleShotDetector()
+    ).store.load_records("test_5s")
+
+    assert result["start_stage"] == "embeddings"
+    assert [record.sampling_reason for record in records] == ["periodic", "shot"]
+
+
+def test_encoder_change_regenerates_pre_dedup_candidates(tmp_path):
+    config = VideoIngestConfig(
+        processed_root=tmp_path,
+        visual_sampling_mode="sparse_shot",
+        visual_global_sample_seconds=5.0,
+        visual_dedup_enabled=True,
+    )
+    source = "tests/fixtures/test_5s.mp4"
+    VideoIngestionPipeline(
+        IdenticalEncoder("v1"), config, shot_detector=SingleShotDetector()
+    ).ingest_video(source)
+
+    result = VideoIngestionPipeline(
+        IdenticalEncoder("v2"), config, shot_detector=SingleShotDetector()
+    ).ingest_video(source)
+
+    assert result["start_stage"] == "frames"

@@ -15,7 +15,11 @@ class AdvancedFaissIndex:
         if index_type == "flat":
             self.index = faiss.IndexFlatIP(embedding_dim)
         elif index_type == "hnsw":
-            self.index = faiss.IndexHNSWFlat(embedding_dim, kwargs.get("M", 32))
+            self.index = faiss.IndexHNSWFlat(
+                embedding_dim,
+                kwargs.get("M", 32),
+                faiss.METRIC_INNER_PRODUCT,
+            )
         elif index_type in ("ivf", "pq"):
             nlist = kwargs.get("nlist", 100)
             quantizer = faiss.IndexFlatIP(embedding_dim)
@@ -75,9 +79,10 @@ class AdvancedFaissIndex:
             raise ValueError("Mapping IDs must be integers") from exc
         if set(mapping) != set(range(index.ntotal)):
             raise ValueError("Mapping IDs do not match index positions")
+        if index.metric_type != faiss.METRIC_INNER_PRODUCT:
+            raise ValueError("Loaded index must use inner-product metric")
         instance = cls(index.d, index_type)
         instance.index = index
         instance.frame_id_mapping = mapping
         instance._next_id = index.ntotal
-        return instance
         return instance

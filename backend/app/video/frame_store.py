@@ -142,6 +142,10 @@ class FrameStore:
         fingerprint = config.embeddings_fingerprint(encoder_identity)
         legacy_fingerprint = config.embeddings_fingerprint({**encoder_identity, "revision": "default"}) if encoder_identity.get("revision") != "default" else None
         if not self.validate_embeddings(manifest, fingerprint, encoder_identity["embedding_dim"], legacy_fingerprint):
+            if config.visual_dedup_enabled and manifest.completed_stage == "embeddings":
+                return ResumePlan(
+                    "frames", True, False, False,
+                    "embeddings invalid or changed; dedup candidates must be regenerated",
+                )
             return ResumePlan("embeddings", True, True, False, "embeddings invalid or changed")
         return ResumePlan("complete", True, True, True, "all artifacts valid")
-

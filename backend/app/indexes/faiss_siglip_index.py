@@ -28,7 +28,9 @@ class FaissSigLIPIndex:
         if index_type == "flat":
             self.index = faiss.IndexFlatIP(embedding_dim)
         else:
-            self.index = faiss.IndexHNSWFlat(embedding_dim, 32)
+            self.index = faiss.IndexHNSWFlat(
+                embedding_dim, 32, faiss.METRIC_INNER_PRODUCT
+            )
             self.index.hnsw.efConstruction = 40
             self.index.hnsw.efSearch = 64
         self.frame_id_mapping: Dict[int, str] = {}
@@ -238,6 +240,8 @@ class FaissSigLIPIndex:
         else:
             if not isinstance(index, faiss.IndexHNSWFlat):
                 raise ValueError("Loaded index is not IndexHNSWFlat")
+            if index.metric_type != faiss.METRIC_INNER_PRODUCT:
+                raise ValueError("Loaded HNSW index must use inner-product metric")
 
         instance = cls(embedding_dim=index.d, index_type=index_type)
         instance.index = index
