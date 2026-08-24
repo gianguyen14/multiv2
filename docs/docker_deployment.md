@@ -6,9 +6,10 @@ The containerized deployment packages the Python runtime, system utilities (FFmp
 
 ### Storage & Volume Model
 Containers are stateless. All mutable and persistent data reside on host mounts:
-- **Source Videos (`/data/videos`)**: Mounted **read-only** (`:ro`).
-- **Processed Artifacts (`/data/processed`)**: Mounted **read-write** (`:rw`). Contains frame extractions, embeddings, OCR/ASR caches, and atomic FAISS generation indexes.
+- **Data (`/data`)**: Mounted **read-write** (`:rw`), including source videos under `/data/videos` and processed artifacts under `/data/processed`.
 - **Model Cache (`/models`)**: Mounted **read-write** (`:rw`). Holds cached SigLIP2 and Faster Whisper model weights.
+- **Runtime Cache (`/cache`)**: Mounted **read-write** (`:rw`) for Hugging Face and PyTorch caches.
+- **Logs (`/logs`)**: Mounted **read-write** (`:rw`) for operator-retained logs.
 
 ### Security Model & Localhost Default
 The API currently contains **no built-in authentication or authorization**.
@@ -27,7 +28,7 @@ ports:
 Copy the example environment configuration:
 ```bash
 cp .env.example .env
-mkdir -p data/test-videos data/processed models
+mkdir -p data/videos data/processed models cache logs
 ```
 
 ### Step 2: Build the Container Image
@@ -40,20 +41,20 @@ docker compose build
 ### Step 3: Online First-Time Model Preparation
 Download and cache the SigLIP2 and Faster Whisper models to the persistent `/models` directory:
 ```bash
-docker compose run --rm worker models --prepare
+docker compose --profile tools run --rm aic-cli models --prepare
 ```
 
 ### Step 4: Video Preprocessing
 Run offline preprocessing on the mounted video directory:
 ```bash
-docker compose run --rm worker preprocess /data/videos
+docker compose --profile tools run --rm aic-cli preprocess /data/videos
 ```
 *Note: Preprocessing does not run automatically on backend startup to ensure fast and deterministic service boot.*
 
 ### Step 5: Start the Backend Service
 Start the FastAPI search backend:
 ```bash
-docker compose up -d backend
+docker compose up -d aic
 ```
 
 Check health:
@@ -84,7 +85,7 @@ TRANSFORMERS_OFFLINE=1
 
 Verify cached models offline:
 ```bash
-docker compose run --rm worker models
+docker compose --profile tools run --rm aic-cli models --verify-offline
 ```
 
 ---
@@ -99,7 +100,7 @@ To enable NVIDIA GPU acceleration for SigLIP2 image encoding and Faster Whisper 
 
 ### Running with GPU Override
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.cuda.yml up -d backend
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d aic
 ```
 
 *Note on GPU Status: CUDA container execution requires a verified host GPU and NVIDIA Container Toolkit. On systems without NVIDIA GPU hardware, deployment defaults to CPU inference.*

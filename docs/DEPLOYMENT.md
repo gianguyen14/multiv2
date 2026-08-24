@@ -64,6 +64,22 @@ LOCAL_REFINE_INTERVAL_SECONDS=0.5
 LOCAL_REFINE_MAX_REGIONS=5
 ```
 
+Current runtime limitations:
+
+- `sparse_shot` always provides deterministic sparse periodic sampling. The
+  bundled `TransNetV2Adapter` does not yet implement inference and no TransNet
+  weights or TensorFlow runtime are shipped, so the standard CLI currently
+  adds no shot representatives. A tested injected `ShotDetector` remains
+  supported by the ingestion pipeline.
+- The local-refinement region generation, 0.5-second sampling, and scoring
+  module is unit-tested, but `ConfiguredSearch` does not yet have a raw-video
+  frame provider and therefore does not invoke it. `LOCAL_REFINE_ENABLED=true`
+  is forward-compatible configuration, not an active API-search stage in this
+  revision. No local vectors are persisted.
+
+These limitations should be resolved before claiming shot-coverage or local
+refinement quality improvements from the production service.
+
 ### Rollback Configuration
 To restore the legacy 1.0-second uniform sampling baseline without deduplication or local refinement, update `.env`:
 
@@ -124,6 +140,16 @@ To enable NVIDIA GPU acceleration:
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 ```
+
+For a fail-fast GPU acceptance run with real, pre-cached models and three real
+videos, configure the `AIC_*_DIR` variables documented in the script and run:
+
+```bash
+./scripts/validate_rc2_gpu.sh
+```
+
+The script builds only the local `aic-retrieval:rc2-validation` tag by default
+and never pushes or overwrites a Docker Hub tag.
 
 ---
 

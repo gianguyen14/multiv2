@@ -125,29 +125,30 @@ cd multiv2
 Linux / WSL2:
 
 ```bash
-mkdir -p data/test-videos data/processed models
+mkdir -p data/videos data/processed models cache logs
 ```
 
 PowerShell:
 
 ```powershell
-New-Item -ItemType Directory -Force data/test-videos, data/processed, models
+New-Item -ItemType Directory -Force data/videos, data/processed, models, cache, logs
 ```
 
 Put source videos in:
 
 ```text
-data/test-videos/
+data/videos/
 ```
 
 Default Docker mounts:
 
 ```text
-Host                       Container
-------------------------------------------------
-./data/test-videos   -->   /data/videos       read-only
-./data/processed     -->   /data/processed    read/write
-./models             -->   /models            read/write
+Host                 Container
+----------------------------------------------
+./data         -->   /data              read/write
+./models       -->   /models            read/write
+./cache        -->   /cache             read/write
+./logs         -->   /logs              read/write
 ```
 
 ## 3. Build the image
@@ -159,8 +160,8 @@ docker compose build
 ## 4. Check the runtime
 
 ```bash
-docker compose --profile tools run --rm worker env --check
-docker compose --profile tools run --rm worker doctor
+docker compose --profile tools run --rm aic-cli env --check
+docker compose --profile tools run --rm aic-cli doctor
 ```
 
 `doctor` is the main readiness check before preprocessing data or serving queries.
@@ -170,19 +171,19 @@ docker compose --profile tools run --rm worker doctor
 Prepare the default visual and ASR models:
 
 ```bash
-docker compose --profile tools run --rm worker models --prepare
+docker compose --profile tools run --rm aic-cli models --prepare
 ```
 
 Inspect model availability:
 
 ```bash
-docker compose --profile tools run --rm worker models
+docker compose --profile tools run --rm aic-cli models
 ```
 
 Optional local QueryRefiner model:
 
 ```bash
-docker compose --profile tools run --rm worker models --prepare --query-refiner
+docker compose --profile tools run --rm aic-cli models --prepare --query-refiner
 ```
 
 If the QueryRefiner model is unavailable, search can use the deterministic fallback path.
@@ -190,7 +191,7 @@ If the QueryRefiner model is unavailable, search can use the deterministic fallb
 ## 6. Preprocess and index videos
 
 ```bash
-docker compose --profile tools run --rm worker preprocess /data/videos
+docker compose --profile tools run --rm aic-cli preprocess /data/videos
 ```
 
 This runs the configured ingestion pipeline and publishes searchable artifacts under the mounted processed directory. Compatible completed work can be resumed instead of repeated from scratch.
@@ -198,13 +199,13 @@ This runs the configured ingestion pipeline and publishes searchable artifacts u
 Check state afterward:
 
 ```bash
-docker compose --profile tools run --rm worker status
+docker compose --profile tools run --rm aic-cli status
 ```
 
 ## 7. Start the application
 
 ```bash
-docker compose up -d backend
+docker compose up -d aic
 ```
 
 Check containers:
@@ -216,7 +217,7 @@ docker compose ps
 Follow logs:
 
 ```bash
-docker compose logs -f backend
+docker compose logs -f aic
 ```
 
 Open the web interface:
@@ -257,10 +258,10 @@ There are three main interfaces:
 
 ## Option A — Web UI
 
-Start the backend:
+Start the application service:
 
 ```bash
-docker compose up -d backend
+docker compose up -d aic
 ```
 
 Then open:
@@ -275,10 +276,10 @@ The frontend is served directly by FastAPI, so the normal Docker workflow does n
 
 ## Option B — CLI with `projectctl.py`
 
-Inside Docker, use the `worker` service:
+Inside Docker, use the `aic-cli` tools-profile service:
 
 ```bash
-docker compose --profile tools run --rm worker --help
+docker compose --profile tools run --rm aic-cli --help
 ```
 
 ### 🔎 Textual KIS
@@ -286,7 +287,7 @@ docker compose --profile tools run --rm worker --help
 Find frames matching a description:
 
 ```bash
-docker compose --profile tools run --rm worker \
+docker compose --profile tools run --rm aic-cli \
   kis "một người phụ nữ mặc áo dài" --top-k 20
 ```
 
@@ -303,7 +304,7 @@ Example queries:
 Retrieve evidence for a question:
 
 ```bash
-docker compose --profile tools run --rm worker \
+docker compose --profile tools run --rm aic-cli \
   qa "Nhiệt độ hiển thị trên màn hình là bao nhiêu?" --top-k 20
 ```
 
@@ -316,14 +317,14 @@ TRAKE searches for an **ordered event sequence inside the same video**.
 Pipe-separated syntax:
 
 ```bash
-docker compose --profile tools run --rm worker \
+docker compose --profile tools run --rm aic-cli \
   trake "người đứng yên | bắt đầu chạy | nhảy lên | tiếp đất" --top-k 30
 ```
 
 JSON syntax:
 
 ```bash
-docker compose --profile tools run --rm worker \
+docker compose --profile tools run --rm aic-cli \
   trake '["đứng", "chạy đà", "nhảy", "tiếp đất"]' --top-k 30
 ```
 
@@ -332,7 +333,7 @@ TRAKE can decode and search more densely around promising temporal regions, then
 Disable dense temporal refinement for diagnostics:
 
 ```bash
-docker compose --profile tools run --rm worker \
+docker compose --profile tools run --rm aic-cli \
   trake "event one | event two" --no-temporal-refine
 ```
 
@@ -341,7 +342,7 @@ docker compose --profile tools run --rm worker \
 If the query image is available inside the container:
 
 ```bash
-docker compose --profile tools run --rm worker \
+docker compose --profile tools run --rm aic-cli \
   image-search /data/videos/query.jpg --top-k 20
 ```
 
@@ -350,7 +351,7 @@ You can also upload an image through the HTTP API from the host.
 ### 🧠 Inspect the query plan
 
 ```bash
-docker compose --profile tools run --rm worker \
+docker compose --profile tools run --rm aic-cli \
   query-plan "biển số xe 79H-6072" --task kis --json
 ```
 
@@ -359,23 +360,23 @@ This is useful for understanding query expansion, lexical terms, and the local Q
 ### 🩺 Diagnostics
 
 ```bash
-docker compose --profile tools run --rm worker doctor
-docker compose --profile tools run --rm worker status
-docker compose --profile tools run --rm worker info
-docker compose --profile tools run --rm worker smoke
+docker compose --profile tools run --rm aic-cli doctor
+docker compose --profile tools run --rm aic-cli status
+docker compose --profile tools run --rm aic-cli info
+docker compose --profile tools run --rm aic-cli smoke
 ```
 
 ### 📦 Dataset validation
 
 ```bash
-docker compose --profile tools run --rm worker \
+docker compose --profile tools run --rm aic-cli \
   dataset verify /data/videos
 ```
 
 Run the repository's representative validation workflow:
 
 ```bash
-docker compose --profile tools run --rm worker validate-dataset
+docker compose --profile tools run --rm aic-cli validate-dataset
 ```
 
 ---
@@ -450,7 +451,7 @@ curl -X POST http://127.0.0.1:8000/api/search \
 # 🧩 Typical end-to-end workflow
 
 ```text
-1. Put videos in data/test-videos/
+1. Put videos in data/videos/
            │
            ▼
 2. docker compose build
@@ -468,7 +469,7 @@ curl -X POST http://127.0.0.1:8000/api/search \
 6. status
            │
            ▼
-7. docker compose up -d backend
+7. docker compose up -d aic
            │
            ▼
 8. Open Web UI / run KIS / Q&A / TRAKE / image search
@@ -486,20 +487,22 @@ curl -X POST http://127.0.0.1:8000/api/search \
 Compose supports:
 
 ```text
-VIDEOS_DIR
-PROCESSED_DIR
-MODELS_DIR
-HF_HUB_OFFLINE
-TRANSFORMERS_OFFLINE
+AIC_DATA_DIR
+AIC_MODELS_DIR
+AIC_CACHE_DIR
+AIC_LOGS_DIR
+AIC_BIND_IP
+AIC_PORT
 ```
 
 Example on Linux / WSL2:
 
 ```bash
-VIDEOS_DIR=/mnt/videos \
-PROCESSED_DIR=/mnt/retrieval-processed \
-MODELS_DIR=/mnt/retrieval-models \
-docker compose up -d backend
+AIC_DATA_DIR=/mnt/aic-data \
+AIC_MODELS_DIR=/mnt/retrieval-models \
+AIC_CACHE_DIR=/mnt/retrieval-cache \
+AIC_LOGS_DIR=/mnt/retrieval-logs \
+docker compose up -d aic
 ```
 
 For Windows, repository-relative paths are recommended unless Docker Desktop has access to the external drive or path.
@@ -511,7 +514,7 @@ After required weights are already cached in the mounted model directory:
 Linux / WSL2:
 
 ```bash
-HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 docker compose up -d backend
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 docker compose up -d aic
 ```
 
 PowerShell:
@@ -519,13 +522,13 @@ PowerShell:
 ```powershell
 $env:HF_HUB_OFFLINE="1"
 $env:TRANSFORMERS_OFFLINE="1"
-docker compose up -d backend
+docker compose up -d aic
 ```
 
 Verify offline model readiness:
 
 ```bash
-docker compose --profile tools run --rm worker models --verify-offline
+docker compose --profile tools run --rm aic-cli models --verify-offline
 ```
 
 ## Stop / rebuild
@@ -537,7 +540,7 @@ docker compose down
 After source changes:
 
 ```bash
-docker compose up --build -d backend
+docker compose up --build -d aic
 ```
 
 ---
@@ -549,8 +552,8 @@ The repository includes a CUDA Compose override:
 ```bash
 docker compose \
   -f docker-compose.yml \
-  -f docker-compose.cuda.yml \
-  up --build -d backend
+  -f docker-compose.gpu.yml \
+  up --build -d aic
 ```
 
 Host prerequisites:

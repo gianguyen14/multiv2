@@ -18,8 +18,8 @@ if ! command -v docker >/dev/null 2>&1; then
     exit 1
 fi
 
-if ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; then
-    echo "ERROR: Docker Compose is not installed."
+if ! docker compose version >/dev/null 2>&1; then
+    echo "ERROR: Docker Compose v2 plugin is not installed."
     exit 1
 fi
 
