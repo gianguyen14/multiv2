@@ -264,15 +264,30 @@ def command_dev(args):
     command_server(args)
 
 
-def ingest_report(args):
+def _video_ingest_config(args):
+    from dataclasses import replace
+
     from backend.app.config.video_ingest_config import VideoIngestConfig
+    configured = VideoIngestConfig.from_env()
+    device = args.device or os.getenv("VIDEO_INGEST_DEVICE", os.getenv("COMPUTE_DEVICE", "auto"))
+    batch_size = getattr(args, "batch_size", None)
+    return replace(
+        configured,
+        processed_root=Path(args.processed_root),
+        device=device,
+        embed_batch_size=(
+            batch_size if batch_size is not None else configured.embed_batch_size
+        ),
+        index_type=args.index_type,
+    )
+
+
+def ingest_report(args):
     from backend.app.runtime.operations import resource_preflight, write_run_manifest
     from backend.app.embeddings.siglip2 import SigLIP2Encoder
     from backend.app.video.ingest import ingest_path
-    device = args.device or os.getenv("VIDEO_INGEST_DEVICE", os.getenv("COMPUTE_DEVICE", "auto"))
-    batch_size = getattr(args, "batch_size", None)
-    config = VideoIngestConfig(processed_root=Path(args.processed_root), device=device,
-        embed_batch_size=batch_size, index_type=args.index_type)
+    config = _video_ingest_config(args)
+    device = config.device
     preflight = resource_preflight(args.path, config.processed_root)
     models = model_inventory(args.whisper_model)
     preflight["visual"] = {"runtime_ready": _module("transformers") and _module("torch"),
@@ -764,7 +779,7 @@ def parser():
         item.add_argument("--batch-size", type=lambda value: None if value == "auto" else int(value))
         item.add_argument("--preflight-only", action="store_true")
         item.add_argument("--limit", type=int)
-        item.add_argument("--index-type", default="flat", choices=("flat", "hnsw"))
+        item.add_argument("--index-type", default=os.getenv("VIDEO_INDEX_TYPE", "flat"), choices=("flat", "hnsw"))
         item.add_argument("--whisper-model", default=FASTER_WHISPER_MODEL)
         item.set_defaults(handler=handler)
     for name, handler in (("search", command_search), ("kis", command_kis), ("qa", command_qa)):
