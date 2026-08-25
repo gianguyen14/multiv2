@@ -125,6 +125,21 @@ def test_auto_gpu_routing_selects_paddle_primary(monkeypatch):
     assert backend.fallback.info()["backend"] == "tesseract"
 
 
+def test_auto_gpu_keeps_vietnamese_primary_and_installed_fallback_language(monkeypatch):
+    monkeypatch.setattr(text_backends, "probe_paddle", lambda: RuntimeCapabilities(
+        "paddle", True, cuda_available=True, cuda_device_count=1,
+        cuda_devices=({"index": 0, "name": "NVIDIA RTX"},),
+    ))
+    monkeypatch.setattr(text_backends, "resolve_device", lambda *args, **kwargs: DeviceSelection(
+        "ocr", "paddle", "cuda:0", "cuda:0", "auto", 0
+    ))
+
+    backend = create_ocr_backend(name="auto", languages="eng")
+
+    assert backend.primary.info()["languages"] == "vi"
+    assert backend.fallback.info()["languages"] == "eng"
+
+
 # C. Paddle success: When Paddle returns valid text, Tesseract fallback is NOT called
 def test_paddle_success_does_not_call_tesseract():
     paddle = MockWorkingPaddleBackend(result_text="Biển số 79H-6072", confidence=0.92)

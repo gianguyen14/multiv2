@@ -36,6 +36,7 @@ def filter_near_duplicate_frames(
 
     if (
         threshold is None
+        or isinstance(threshold, bool)
         or not isinstance(threshold, (int, float))
         or math.isnan(threshold)
         or math.isinf(threshold)
@@ -58,9 +59,10 @@ def filter_near_duplicate_frames(
         return [], embeddings, []
 
     # Normalize vectors to ensure exact cosine similarity via dot product
-    norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
-    if np.any(norms <= 0.0):
-        raise ValueError("embeddings must not contain zero-norm vectors")
+    with np.errstate(over="ignore", invalid="ignore"):
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+    if not np.isfinite(norms).all() or np.any(norms <= 0.0):
+        raise ValueError("embeddings must not contain zero-norm or overflowed vectors")
     norm_embs = embeddings / norms
 
     protected_set: Set[int] = set(protected_source_frame_indices or [])

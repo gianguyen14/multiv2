@@ -1,6 +1,13 @@
 from PIL import Image
 
-from backend.app.video.frame_sampler import iter_sample_frames, sample_frames
+import pytest
+
+from backend.app.video.frame_sampler import (
+    FrameSamplingError,
+    iter_sample_frames,
+    sample_frames,
+    sample_sparse_shot_frames,
+)
 from backend.app.video.video_decoder import DecodedFrame
 
 
@@ -35,3 +42,22 @@ def test_missing_pts_is_not_reconstructed_from_fps():
     sampled = sample_frames(frames, 30.0)
     assert sampled[0].frame.source_frame_index_zero_based == 777
     assert sampled[0].frame.source_frame_index_zero_based != round(sampled[0].frame.timestamp_seconds * 30)
+
+
+@pytest.mark.parametrize("timestamp", [float("nan"), float("inf"), -1.0, "bad"])
+@pytest.mark.parametrize("sampler", [sample_frames, sample_sparse_shot_frames])
+def test_malformed_timestamps_fail_fast(timestamp, sampler):
+    with pytest.raises(FrameSamplingError, match="non-negative finite"):
+        sampler(iter([frame(0, timestamp)]), 5.0)
+
+
+@pytest.mark.parametrize("sampler", [sample_frames, sample_sparse_shot_frames])
+def test_decreasing_timestamps_are_rejected(sampler):
+    with pytest.raises(FrameSamplingError, match="non-decreasing"):
+        sampler(iter([frame(0, 1.0), frame(1, 0.5)]), 5.0)
+
+
+def test_interval_longer_than_video_selects_only_first_nearest_frame():
+    sampled = sample_frames(iter([frame(4, 0.2), frame(5, 0.8)]), 10.0)
+    assert [item.frame.source_frame_index_zero_based for item in sampled] == [4]
+    assert [item.target_timestamp_seconds for item in sampled] == [0.0]

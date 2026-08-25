@@ -39,3 +39,55 @@ def test_deserialization_rejects_invalid_provenance(updates, error):
 
     with pytest.raises(ValueError, match=error):
         FrameRecord.from_dict(payload)
+
+
+def test_legacy_and_future_extended_payloads_remain_readable():
+    record = FrameRecord.create(
+        video_id="L01_V001",
+        source_frame_index_zero_based=1,
+        submission_frame_id=1,
+        timestamp_seconds=0.1,
+        pts=1,
+        width=320,
+        height=240,
+        image_path="frame.jpg",
+        sample_interval_seconds=1.0,
+        ingestion_version="m15-v1",
+    )
+    legacy = record.to_dict()
+    legacy.pop("shot_id")
+    legacy.pop("sampling_reason")
+
+    loaded_legacy = FrameRecord.from_dict(legacy)
+    loaded_extended = FrameRecord.from_dict(
+        {**record.to_dict(), "candidate_id": record.frame_uid, "future_extra_field": 1}
+    )
+
+    assert loaded_legacy.shot_id is None
+    assert loaded_legacy.sampling_reason is None
+    assert loaded_extended == record
+
+
+@pytest.mark.parametrize(
+    "updates,error",
+    [
+        ({"source_frame_index_zero_based": -1}, "non-negative integer"),
+        ({"timestamp_seconds": float("inf")}, "non-negative and finite"),
+        ({"sampling_reason": "periodic+shot", "shot_id": None}, "non-negative integer"),
+    ],
+)
+def test_required_new_record_invariants(updates, error):
+    record = FrameRecord.create(
+        video_id="L01_V001",
+        source_frame_index_zero_based=1,
+        submission_frame_id=1,
+        timestamp_seconds=0.1,
+        pts=1,
+        width=320,
+        height=240,
+        image_path="frame.jpg",
+        sample_interval_seconds=1.0,
+        ingestion_version="m15-v1",
+    )
+    with pytest.raises(ValueError, match=error):
+        FrameRecord.from_dict({**record.to_dict(), **updates})

@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "dataset_kind": "synthetic_contract_fixture",
+  "quality_claims_allowed": false,
+  "description": "Deterministic plumbing fixture only; it is not human-authored AIC ground truth."
+}

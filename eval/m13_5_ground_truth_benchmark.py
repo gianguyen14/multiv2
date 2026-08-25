@@ -1,4 +1,9 @@
-"""Same-candidate retrieval benchmark for the checked-in M13.5 fixture."""
+"""Same-candidate metric plumbing for an M13.5-format corpus.
+
+The checked-in corpus is explicitly synthetic and may only be used for contract
+testing.  Callers must inspect ``quality_claims_allowed`` before reporting its
+metrics as real retrieval quality.
+"""
 
 from __future__ import annotations
 
@@ -240,6 +245,8 @@ def run_benchmark(
     return {
         "run_metadata": {
             "dataset_fingerprint": corpus.fingerprint,
+            "dataset_kind": corpus.dataset_kind,
+            "quality_claims_allowed": corpus.quality_claims_allowed,
             "encoder": getattr(encoder, "model_name", type(encoder).__name__),
             "candidate_ks": list(candidate_ks),
             "final_ks": list(final_ks),

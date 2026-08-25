@@ -1,4 +1,4 @@
-"""Load and validate the historical M13.5 retrieval evaluation corpus."""
+"""Load and validate an M13.5-format retrieval evaluation corpus."""
 
 from __future__ import annotations
 
@@ -29,6 +29,8 @@ class EvaluationCorpus:
     candidates: tuple[CorpusCandidate, ...]
     queries: tuple[CorpusQuery, ...]
     fingerprint: str
+    dataset_kind: str
+    quality_claims_allowed: bool
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -50,6 +52,22 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 def load_corpus(root: str | Path) -> EvaluationCorpus:
     root = Path(root).resolve()
+    manifest_path = root / "manifest.json"
+    manifest = (
+        json.loads(manifest_path.read_text(encoding="utf-8"))
+        if manifest_path.is_file()
+        else {}
+    )
+    if not isinstance(manifest, dict):
+        raise ValueError("corpus manifest must be an object")
+    dataset_kind = str(manifest.get("dataset_kind", "unverified")).strip()
+    if not dataset_kind:
+        raise ValueError("corpus dataset_kind must be non-empty")
+    quality_claims_allowed = manifest.get("quality_claims_allowed", False)
+    if not isinstance(quality_claims_allowed, bool):
+        raise ValueError("quality_claims_allowed must be boolean")
+    if dataset_kind.startswith("synthetic") and quality_claims_allowed:
+        raise ValueError("synthetic corpora cannot authorize quality claims")
     candidate_rows = _read_jsonl(root / "candidates.jsonl")
     query_rows = _read_jsonl(root / "queries.jsonl")
 
@@ -83,6 +101,8 @@ def load_corpus(root: str | Path) -> EvaluationCorpus:
             raise ValueError(f"duplicate query ID: {query_id}")
         query_ids.add(query_id)
         text = str(row.get("text", "")).strip()
+        if not text:
+            raise ValueError(f"query {query_id} text must be non-empty")
         relevance = row.get("relevance")
         if not isinstance(relevance, dict):
             raise ValueError(f"query {query_id} relevance must be an object")
@@ -105,6 +125,10 @@ def load_corpus(root: str | Path) -> EvaluationCorpus:
         queries.append(CorpusQuery(query_id, text, normalized_relevance))
 
     canonical = {
+        "manifest": {
+            "dataset_kind": dataset_kind,
+            "quality_claims_allowed": quality_claims_allowed,
+        },
         "candidates": [
             {
                 "candidate_id": candidate.candidate_id,
@@ -125,7 +149,14 @@ def load_corpus(root: str | Path) -> EvaluationCorpus:
     fingerprint = hashlib.sha256(
         json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
-    return EvaluationCorpus(root, tuple(candidates), tuple(queries), fingerprint)
+    return EvaluationCorpus(
+        root,
+        tuple(candidates),
+        tuple(queries),
+        fingerprint,
+        dataset_kind,
+        quality_claims_allowed,
+    )
 
 
 def corpus_statistics(corpus: EvaluationCorpus) -> dict[str, Any]:
@@ -136,4 +167,6 @@ def corpus_statistics(corpus: EvaluationCorpus) -> dict[str, Any]:
         "relevance_judgment_count": len(grades),
         "relevant_judgment_count": sum(grade > 0 for grade in grades),
         "fingerprint": corpus.fingerprint,
+        "dataset_kind": corpus.dataset_kind,
+        "quality_claims_allowed": corpus.quality_claims_allowed,
     }

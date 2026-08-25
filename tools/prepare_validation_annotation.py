@@ -35,7 +35,11 @@ def validate_ground_truth_file(
         report.is_valid = False
         return report
 
-    known = {str(video_id) for video_id in known_video_ids} if known_video_ids else None
+    known = (
+        {str(video_id) for video_id in known_video_ids}
+        if known_video_ids is not None
+        else None
+    )
     seen_ids = set()
     report.total_queries = len(rows)
     for row_number, row in enumerate(rows, start=1):
@@ -116,6 +120,10 @@ def validate_ground_truth_file(
         valid_answers = [
             answer for answer in answers if isinstance(answer, str) and answer.strip()
         ]
+        if valid_ranges and not valid_video_ids:
+            report.errors.append(
+                f"Query {query_id or row_number} frame ranges require a video ID"
+            )
         if valid_video_ids:
             report.video_level_labeled += 1
         if valid_ranges:

@@ -10,6 +10,7 @@ from backend.app.shot_detection.base import ShotDetector
 from backend.app.video.m15_ingestion_pipeline import _normalize_detected_shots
 from backend.app.video.frame_sampler import (
     FrameSamplingError,
+    SampledFrame,
     iter_sample_frames,
     iter_sample_sparse_shot_frames,
     sample_frames,
@@ -34,6 +35,53 @@ def _create_synthetic_frames(duration_seconds: float, fps: float = 30.0) -> List
             image=Image.new("RGB", (2, 2)),
         ))
     return frames
+
+
+def _full_list_reference(frames, interval_seconds, shot_boundaries):
+    """Test-only reference for the pre-streaming selection semantics."""
+    timed = [frame for frame in frames if frame.timestamp_seconds is not None]
+    periodic = {
+        item.frame.source_frame_index_zero_based: item
+        for item in iter_sample_frames(timed, interval_seconds)
+    }
+    shots = {}
+    for shot_id, (start, end) in enumerate(shot_boundaries):
+        in_window = [
+            frame for frame in timed if start <= frame.timestamp_seconds <= end
+        ]
+        if not in_window:
+            continue
+        midpoint = (start + end) / 2.0
+        selected = min(
+            in_window,
+            key=lambda frame: (
+                abs(frame.timestamp_seconds - midpoint),
+                frame.source_frame_index_zero_based,
+            ),
+        )
+        shots[selected.source_frame_index_zero_based] = SampledFrame(
+            selected, midpoint, "shot", shot_id
+        )
+
+    merged = {}
+    for source_index in set(periodic) | set(shots):
+        if source_index in periodic and source_index in shots:
+            periodic_item = periodic[source_index]
+            merged[source_index] = SampledFrame(
+                periodic_item.frame,
+                periodic_item.target_timestamp_seconds,
+                "periodic+shot",
+                shots[source_index].shot_id,
+            )
+        else:
+            merged[source_index] = periodic.get(source_index, shots.get(source_index))
+    return (
+        sorted(
+            merged.values(),
+            key=lambda item: item.frame.source_frame_index_zero_based,
+        ),
+        set(shots),
+    )
 
 
 class MockShotDetector(ShotDetector):
@@ -182,6 +230,32 @@ def test_malformed_shape_and_out_of_timeline_shots_are_skipped():
     assert shot_item.shot_id == 5
 
 
+def test_large_finite_shot_boundaries_do_not_overflow_midpoint():
+    frames = _create_synthetic_frames(duration_seconds=1.0, fps=2.0)
+
+    sampled = sample_sparse_shot_frames(
+        iter(frames), interval_seconds=5.0, shot_boundaries=[(1e308, 1e308)]
+    )
+
+    assert [item.frame.source_frame_index_zero_based for item in sampled] == [0]
+
+
+def test_normal_shot_midpoint_preserves_historical_float_value_exactly():
+    start = 0.04091934103444243
+    end = 2.331778862250263
+    frames = [
+        DecodedFrame(index, index, timestamp, 2, 2, Image.new("RGB", (2, 2)))
+        for index, timestamp in enumerate((0.0, 1.010976, 3.0))
+    ]
+
+    sampled = sample_sparse_shot_frames(
+        iter(frames), interval_seconds=100.0, shot_boundaries=[(start, end)]
+    )
+    shot = next(item for item in sampled if item.sampling_reason == "shot")
+
+    assert shot.target_timestamp_seconds == (start + end) / 2.0
+
+
 def test_detector_millisecond_normalization_preserves_valid_intervals():
     raw = [None, (1,), (False, 1000), (2000, 1000), (1000, 2000)]
 
@@ -233,6 +307,60 @@ def test_sparse_shot_sampling_does_not_retain_every_decoded_frame():
     assert len(sampled) == 201
     assert len(protected) == 1
     assert TrackedFrame.peak < 250
+
+
+def test_streaming_matches_full_list_reference_on_irregular_timestamps():
+    timestamps = [0.08, 0.42, 1.21, 1.82, 2.45, 3.67, 5.10]
+    frames = [
+        DecodedFrame(index, index, timestamp, 2, 2, Image.new("RGB", (2, 2)))
+        for index, timestamp in enumerate(timestamps)
+    ]
+    shots = [(0.0, 0.2), (1.3, 2.3), (2.3, 4.0), (4.0, 5.2)]
+
+    expected, expected_protected = _full_list_reference(frames, 1.0, shots)
+    actual, actual_protected = sample_sparse_shot_frames_with_protection(
+        (frame for frame in frames), 1.0, shots
+    )
+
+    pack = lambda rows: [
+        (
+            item.frame.source_frame_index_zero_based,
+            item.frame.timestamp_seconds,
+            item.target_timestamp_seconds,
+            item.sampling_reason,
+            item.shot_id,
+        )
+        for item in rows
+    ]
+    assert pack(actual) == pack(expected)
+    assert actual_protected == expected_protected
+
+
+def test_short_unrepresented_shot_never_selects_outside_its_window():
+    frames = [
+        DecodedFrame(index, index, timestamp, 2, 2, Image.new("RGB", (2, 2)))
+        for index, timestamp in enumerate((0.0, 1.0, 3.0))
+    ]
+
+    sampled, protected = sample_sparse_shot_frames_with_protection(
+        iter(frames), 100.0, [(1.4, 1.6)]
+    )
+
+    assert protected == set()
+    assert all(item.sampling_reason == "periodic" for item in sampled)
+
+
+def test_same_frame_multi_shot_collision_keeps_later_scalar_shot_id():
+    frames = _create_synthetic_frames(duration_seconds=1.0, fps=2.0)
+
+    sampled, protected = sample_sparse_shot_frames_with_protection(
+        iter(frames), 100.0, [(0.4, 0.6), (0.45, 0.55)]
+    )
+
+    shot = next(item for item in sampled if item.sampling_reason == "shot")
+    assert shot.frame.source_frame_index_zero_based == 1
+    assert shot.shot_id == 1
+    assert protected == {1}
 
 
 def test_pipeline_legacy_mode_does_not_invoke_detector(tmp_path):

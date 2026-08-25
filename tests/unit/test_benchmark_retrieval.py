@@ -93,11 +93,11 @@ def test_query_input_loading_json_and_jsonl(tmp_path):
     assert len(queries) == 2
     assert queries[0].query_id == "Q1"
     assert queries[0].task_type == "kis"
-    assert queries[0].ground_truth_video_ids == ["V1"]
-    assert queries[0].accepted_frame_intervals == [[10, 50]]
+    assert queries[0].ground_truth_video_ids == ("V1",)
+    assert queries[0].accepted_frame_intervals == ((10, 50),)
     assert queries[1].query_id == "Q2"
     assert queries[1].task_type == "qa"
-    assert queries[1].ground_truth_video_ids == ["V2"]
+    assert queries[1].ground_truth_video_ids == ("V2",)
 
     # Test JSONL loading
     jsonl_file = tmp_path / "queries.jsonl"
@@ -112,6 +112,26 @@ def test_query_input_loading_json_and_jsonl(tmp_path):
     assert queries_jl[1].query_id == "Q4"
     assert queries_jl[1].task_type == "trake"
     assert queries_jl[1].query_text == "a -> b"
+
+
+def test_frozen_query_input_copies_mutable_collections():
+    video_ids = ["V1"]
+    intervals = [[10, 50]]
+    query = BenchmarkQueryInput(
+        "Q1",
+        "kis",
+        "query",
+        events=["event"],
+        ground_truth_video_ids=video_ids,
+        accepted_frame_intervals=intervals,
+    )
+
+    video_ids.append("V2")
+    intervals[0][0] = 0
+
+    assert query.events == ("event",)
+    assert query.ground_truth_video_ids == ("V1",)
+    assert query.accepted_frame_intervals == ((10, 50),)
 
 
 def test_failure_localization_stages():
@@ -202,3 +222,51 @@ def test_diversity_simulations():
     assert len(rr) == 4
     rr_vids = [c["video_id"] for c in rr]
     assert rr_vids == ["V1", "V2", "V3", "V1"]
+
+
+def test_unlabeled_queries_do_not_produce_fake_rank_metrics():
+    queries = [
+        BenchmarkQueryInput("labeled", "kis", "query", ground_truth_video_ids=("V1",)),
+        BenchmarkQueryInput("unlabeled", "kis", "diagnostic only"),
+    ]
+    runner = ProductionBenchmarkRunner(
+        lambda query, top_k: [{"video_id": "V2", "frame_id": 1}]
+    )
+
+    report = runner.run(queries, top_k=1)
+
+    assert report["rank_metrics"]["total_queries"] == 1
+    assert report["rank_metrics"]["mrr"] == 0.0
+    assert report["quality_metrics_status"] == "available"
+    assert report["unlabeled_queries"] == 1
+
+
+def test_all_unlabeled_queries_report_quality_metrics_unavailable():
+    runner = ProductionBenchmarkRunner(
+        lambda query, top_k: [{"video_id": "V1", "frame_id": 1}]
+    )
+
+    report = runner.run(
+        [BenchmarkQueryInput("diagnostic", "kis", "query without labels")],
+        top_k=1,
+    )
+
+    assert report["rank_metrics"] is None
+    assert report["quality_metrics_status"] == "unavailable_no_ground_truth"
+    assert report["unlabeled_queries"] == 1
+
+
+def test_concentration_rejects_candidates_without_video_identity():
+    with pytest.raises(ValueError, match="must have a video_id"):
+        compute_concentration([{"frame_id": 1}])
+
+
+def test_query_loader_rejects_ranges_without_video_ground_truth(tmp_path):
+    path = tmp_path / "queries.json"
+    path.write_text(
+        json.dumps(
+            [{"id": "Q1", "query": "query", "accepted_frame_interval": [1, 2]}]
+        )
+    )
+    with pytest.raises(ValueError, match="require a ground-truth video ID"):
+        ProductionBenchmarkRunner.load_queries(path)

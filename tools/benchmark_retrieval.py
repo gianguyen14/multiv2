@@ -8,7 +8,7 @@ import statistics
 import time
 from collections import Counter, OrderedDict
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -21,8 +21,19 @@ class BenchmarkQueryInput:
     task_type: str
     query_text: str
     events: tuple[str, ...] = ()
-    ground_truth_video_ids: list[str] = field(default_factory=list)
-    accepted_frame_intervals: list[list[int]] = field(default_factory=list)
+    ground_truth_video_ids: tuple[str, ...] = ()
+    accepted_frame_intervals: tuple[tuple[int, int], ...] = ()
+
+    def __post_init__(self):
+        object.__setattr__(self, "events", tuple(self.events))
+        object.__setattr__(
+            self, "ground_truth_video_ids", tuple(self.ground_truth_video_ids)
+        )
+        object.__setattr__(
+            self,
+            "accepted_frame_intervals",
+            tuple(tuple(interval) for interval in self.accepted_frame_intervals),
+        )
 
 
 @dataclass(frozen=True)
@@ -42,6 +53,8 @@ def compute_hhi(shares: Iterable[float]) -> float:
     values = [float(share) for share in shares]
     if any(not math.isfinite(share) or share < 0.0 for share in values):
         raise ValueError("shares must be finite and non-negative")
+    if values and not math.isclose(sum(values), 1.0, abs_tol=1e-9):
+        raise ValueError("non-empty shares must sum to 1.0")
     return float(sum(share * share for share in values))
 
 
@@ -51,11 +64,9 @@ def compute_concentration(
     if not isinstance(depth, int) or isinstance(depth, bool) or depth < 1:
         raise ValueError("depth must be an integer >= 1")
     considered = list(candidates[:depth])
-    counts = Counter(
-        str(candidate["video_id"])
-        for candidate in considered
-        if candidate.get("video_id") not in (None, "")
-    )
+    if any(candidate.get("video_id") in (None, "") for candidate in considered):
+        raise ValueError("every benchmark candidate must have a video_id")
+    counts = Counter(str(candidate["video_id"]) for candidate in considered)
     total = len(considered)
     ordered = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     shares = [count / total for _, count in ordered] if total else []
@@ -288,18 +299,48 @@ class ProductionBenchmarkRunner:
             query_text = str(
                 row.get("query", row.get("text", " -> ".join(events)))
             ).strip()
+            if not query_text:
+                raise ValueError(f"query {query_id} text must be non-empty")
             ground_truth = row.get("ground_truth") or {}
+            if not isinstance(ground_truth, dict):
+                raise ValueError(f"query {query_id} ground truth must be an object")
             video_ids = ground_truth.get("video_ids", row.get("video_ids", []))
+            if not isinstance(video_ids, (list, tuple)):
+                raise ValueError(f"query {query_id} video IDs must be a list")
             single_video = ground_truth.get("video_id", row.get("video_id"))
             if single_video:
                 video_ids = [single_video, *video_ids]
-            video_ids = list(dict.fromkeys(str(video_id) for video_id in video_ids))
+            video_ids = tuple(
+                dict.fromkeys(str(video_id).strip() for video_id in video_ids)
+            )
+            if any(not video_id for video_id in video_ids):
+                raise ValueError(f"query {query_id} contains an empty video ID")
             intervals = ground_truth.get(
                 "frame_ranges", row.get("accepted_frame_intervals", [])
             )
+            if not isinstance(intervals, (list, tuple)):
+                raise ValueError(f"query {query_id} frame ranges must be a list")
             single_interval = row.get("accepted_frame_interval")
             if single_interval:
                 intervals = [single_interval, *intervals]
+            normalized_intervals = []
+            for interval in intervals:
+                if (
+                    not isinstance(interval, (list, tuple))
+                    or len(interval) != 2
+                    or not all(
+                        isinstance(value, int) and not isinstance(value, bool)
+                        for value in interval
+                    )
+                    or interval[0] < 0
+                    or interval[1] < interval[0]
+                ):
+                    raise ValueError(f"query {query_id} has an invalid frame range")
+                normalized_intervals.append((interval[0], interval[1]))
+            if normalized_intervals and not video_ids:
+                raise ValueError(
+                    f"query {query_id} frame ranges require a ground-truth video ID"
+                )
             queries.append(
                 BenchmarkQueryInput(
                     query_id=query_id,
@@ -307,7 +348,7 @@ class ProductionBenchmarkRunner:
                     query_text=query_text,
                     events=events,
                     ground_truth_video_ids=video_ids,
-                    accepted_frame_intervals=[list(interval) for interval in intervals],
+                    accepted_frame_intervals=tuple(normalized_intervals),
                 )
             )
         return queries
@@ -320,26 +361,34 @@ class ProductionBenchmarkRunner:
         ranks: list[int | None] = []
         latencies = []
         concentrations = []
+        unlabeled_queries = 0
         for query in queries:
             started = time.perf_counter()
             rows = list(self.search_handler(query, top_k))
             latencies.append((time.perf_counter() - started) * 1000.0)
-            rank = next(
-                (
-                    index
-                    for index, row in enumerate(rows, start=1)
-                    if _matches_ground_truth(
-                        row,
-                        set(query.ground_truth_video_ids),
-                        query.accepted_frame_intervals,
-                    )
-                ),
-                None,
-            )
-            ranks.append(rank)
+            if query.ground_truth_video_ids:
+                rank = next(
+                    (
+                        index
+                        for index, row in enumerate(rows, start=1)
+                        if _matches_ground_truth(
+                            row,
+                            set(query.ground_truth_video_ids),
+                            query.accepted_frame_intervals,
+                        )
+                    ),
+                    None,
+                )
+                ranks.append(rank)
+            else:
+                unlabeled_queries += 1
             concentrations.append(compute_concentration(rows, depth=top_k))
         return {
-            "rank_metrics": compute_rank_metrics(ranks),
+            "rank_metrics": compute_rank_metrics(ranks) if ranks else None,
+            "quality_metrics_status": (
+                "available" if ranks else "unavailable_no_ground_truth"
+            ),
+            "unlabeled_queries": unlabeled_queries,
             "latency": compute_latency_stats(latencies),
             "concentration": [metric.__dict__ for metric in concentrations],
         }

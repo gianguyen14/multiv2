@@ -37,6 +37,8 @@ class Scorer(ModelScorer):
 
 def test_m14_same_candidate_quality_signal_and_bootstrap_reporting():
     result = run_quality(candidate_ks=(10,), encoder=Encoder(), scorer=Scorer())
+    assert result["run_metadata"]["dataset_kind"] == "synthetic_contract_fixture"
+    assert result["run_metadata"]["quality_claims_allowed"] is False
     report = result["results_by_candidate_k"]["10"]
     assert set(report["metrics"]) == {"faiss", "siglip_exact", "m14", "hybrid"}
     assert set(report["deltas_from_faiss@10"]["m14"]) == {"mrr", "ndcg"}
