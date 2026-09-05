@@ -30,7 +30,6 @@ def _canonical_uid(index: int) -> str:
 def _write_generation(root: Path, *, dim: int, n: int, backend: str = "qwen3_vl_embedding_2b"):
     """Write a schema-v1 generation identical in shape to the packed DB."""
     index = faiss.IndexFlatIP(dim)
-    # One-hot rows keep every test fully deterministic.
     rows = np.zeros((n, dim), dtype=np.float32)
     for i in range(n):
         rows[i, i % dim] = 1.0
@@ -110,7 +109,7 @@ def runtime(tmp_path):
     ocr = [
         {
             "video_id": VIDEO,
-            "timestamp_seconds": 10.0,  # nearest indexed frame index 1
+            "timestamp_seconds": 10.0,
             "raw_text": "bien so 50H 12345",
             "normalized_text": "biển số 50h 12345",
         }
@@ -161,6 +160,16 @@ def test_configured_and_readiness(runtime, tmp_path):
     assert n == 6
 
 
+def test_readiness_cache_rechecks_model_presence(runtime, tmp_path):
+    model_dir = _touch_model(tmp_path / "model")
+    provider = _search(runtime, model_dir, "x")
+    assert provider.readiness()["ready"] is True
+    (model_dir / "model.safetensors").unlink()
+    second = provider.readiness()
+    assert second["ready"] is False
+    assert "weights are not available" in second["reason"]
+
+
 def test_readiness_reports_missing_model_and_missing_root(tmp_path):
     root = tmp_path / "runtime"
     (root / "index").mkdir(parents=True)
@@ -209,13 +218,13 @@ def test_kis_search_returns_verified_visual_top(runtime, tmp_path):
 def test_ocr_evidence_expands_candidates(runtime, tmp_path):
     model_dir = _touch_model(tmp_path / "model")
     provider = _search(runtime, model_dir, "x")
-    # Query '50h' is absent visually (no t<digit>); lexical OCR should surface
-    # the frame nearest timestamp 10.0 -> indexed frame index 1.
     results = provider.handle({"query_type": "kis", "query": "bien so 50h 12345", "top_k": 6})
     ocr_hit = next((row for row in results if row["ocr_score"] > 0.0), None)
     assert ocr_hit is not None
     assert ocr_hit["frame_uid"] == _canonical_uid(1)
     assert "50h" in (ocr_hit["ocr_evidence"] or "").lower()
+    assert provider._ocr_records[0]["token_set"] == frozenset({"biển", "số", "50h", "12345"})
+    assert provider._ocr_records[0]["token_string"] == "biển số 50h 12345"
 
 
 def test_qa_uses_same_pipeline_and_empty_query_rejected(runtime, tmp_path):
@@ -244,8 +253,6 @@ def test_trake_success_returns_ordered_frames(runtime, tmp_path):
 def test_trake_impossible_sequence_errors(runtime, tmp_path):
     model_dir = _touch_model(tmp_path / "model")
     provider = _search(runtime, model_dir, "x")
-    # Six identical events exhaust the six candidate frames; the seventh event
-    # cannot find a strictly larger frame in the same video.
     with pytest.raises(ValueError, match="no single video covers every event"):
         provider.handle({"query_type": "trake", "events": ["t0"] * 7, "top_k": 5})
 
@@ -306,7 +313,6 @@ def test_search_is_readonly(runtime, tmp_path):
 
 def test_create_app_defaults_to_qwen_backend(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
-
     from backend.app.main import create_app
 
     monkeypatch.delenv("SEARCH_BACKEND", raising=False)
@@ -321,23 +327,18 @@ def test_create_app_defaults_to_qwen_backend(tmp_path, monkeypatch):
 
 def test_create_app_selects_provider_by_env(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
-
     from backend.app.main import create_app
 
-    # Canonical SEARCH_BACKEND selector.
     monkeypatch.setenv("SEARCH_BACKEND", "qwen3_vl")
     client = TestClient(create_app(media_root=tmp_path))
     health = client.get("/health").json()
     assert health["search"]["backend"] == "qwen3_vl"
-    # processed root is configured; readiness still 503 because tmp_path holds
-    # no valid index generation.
     assert health["search_configured"] is True
     assert client.get("/health/ready").status_code == 503
 
 
 def test_create_app_accepts_legacy_encoder_alias(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
-
     from backend.app.main import create_app
 
     monkeypatch.delenv("SEARCH_BACKEND", raising=False)
@@ -348,13 +349,11 @@ def test_create_app_accepts_legacy_encoder_alias(tmp_path, monkeypatch):
 
 def test_create_app_legacy_siglip_backend(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
-
     from backend.app.main import create_app
 
     monkeypatch.setenv("SEARCH_BACKEND", "siglip2")
     client = TestClient(create_app(media_root=tmp_path))
     search = client.get("/health").json()["search"]
-    # ConfiguredSearch reports device fields, not a qwen backend.
     assert "backend" not in search
     assert search["configured"] is True
 
@@ -365,6 +364,45 @@ def test_create_app_rejects_unknown_backend(monkeypatch):
     monkeypatch.setenv("SEARCH_BACKEND", "banana")
     with pytest.raises(RuntimeError, match="Unknown SEARCH_BACKEND"):
         create_app()
+
+
+def test_api_runtime_errors_are_sanitized(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from backend.app.main import create_app
+
+    class FailingProvider:
+        configured = True
+        processed_root = tmp_path
+        last_query_plan = None
+        last_query_metrics = {}
+
+        def handle(self, request):
+            raise RuntimeError("secret path /srv/private/model")
+
+        def status(self):
+            return {"backend": "test", "capabilities": {"image": False}}
+
+        def readiness(self):
+            return {"ready": True, "generation_id": "test"}
+
+        def search_image(self, image, top_k=100, deduplicate=True):
+            raise RuntimeError("secret path /srv/private/image")
+
+    monkeypatch.delenv("DEBUG_API_ERRORS", raising=False)
+    client = TestClient(create_app(configured_search=FailingProvider()))
+    response = client.post("/api/search", json={"query": "x", "query_type": "kis"})
+    assert response.status_code == 503
+    assert response.json()["detail"] == "search is unavailable"
+    assert "/srv/private" not in response.text
+
+    image_response = client.post(
+        "/api/search/image",
+        content=b"not-even-read",
+        headers={"content-type": "image/jpeg"},
+    )
+    assert image_response.status_code == 503
+    assert image_response.json()["detail"] == "image search is not supported by the active search backend"
+    assert "/srv/private" not in image_response.text
 
 
 def test_siglip_backend_refuses_qwen_index(tmp_path):
