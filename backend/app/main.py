@@ -77,6 +77,20 @@ class SearchRequest(BaseModel):
         return events
 
 
+def _build_configured_search(media_root):
+    """Select the search provider by ``SEARCH_ENCODER`` (default: siglip2)."""
+    encoder_kind = os.getenv("SEARCH_ENCODER", "siglip2").strip().lower()
+    if encoder_kind == "siglip2":
+        return ConfiguredSearch(media_root)
+    if encoder_kind in ("qwen3_vl", "qwen3-vl", "qwen"):
+        from backend.app.services.qwen_runtime_search import QwenRuntimeSearch
+
+        return QwenRuntimeSearch(processed_root=media_root)
+    raise RuntimeError(
+        f"Unknown SEARCH_ENCODER={encoder_kind!r}; supported values: siglip2, qwen3_vl"
+    )
+
+
 def create_app(search_handler=None, media_root=None, configured_search=None):
     app = FastAPI(title="AIC 2026 Retrieval")
 
@@ -90,7 +104,7 @@ def create_app(search_handler=None, media_root=None, configured_search=None):
 
     frontend = Path(__file__).parents[2] / "frontend" / "src"
     frontend_root = frontend.resolve()
-    configured_search = configured_search or ConfiguredSearch(media_root)
+    configured_search = configured_search or _build_configured_search(media_root)
     uses_configured_search = search_handler is None
     search_handler = search_handler or (configured_search.handle if configured_search.configured else None)
     media_root = Path(media_root or configured_search.processed_root or "data/processed/videos").resolve()

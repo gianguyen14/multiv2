@@ -233,6 +233,28 @@ http://127.0.0.1:8000/health/ready
 http://127.0.0.1:8000/health
 ```
 
+## Qwen3-VL runtime mode (optional)
+
+The default search encoder is SigLIP2. A deployment can instead serve text
+queries from an existing packed **Qwen3-VL-Embedding-2B** DB (FAISS
+generation + OCR/ASR spool) without ingesting or re-encoding anything by
+selecting the runtime adapter:
+
+```bash
+# .env
+SEARCH_ENCODER=qwen3_vl
+AIC_DATA_DIR=/home/hermes/aic/data          # host dir containing aic-db-v1/
+AIC_MODELS_DIR=/home/hermes/aic/models      # host dir containing Qwen3-VL-Embedding-2B/
+VIDEO_PROCESSED_ROOT=/data/aic-db-v1/runtime
+QWEN3_VL_MODEL_DIR=/models/Qwen3-VL-Embedding-2B
+```
+
+The adapter mounts/reads the existing DB in place (read-only), validates the
+generation (vector/mapping/payload counts, dimension, artifact hashes) and
+reproduces the verified query runtime ranking. `SEARCH_ENCODER=siglip2` (the
+default) is unchanged. Image search and TRAKE are not supported by the Qwen
+runtime adapter; the SigLIP2 path remains available for those modes.
+
 Linux / WSL2:
 
 ```bash
