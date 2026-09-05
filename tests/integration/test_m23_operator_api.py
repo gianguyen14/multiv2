@@ -23,12 +23,52 @@ def test_operator_ui_health_search_and_media(tmp_path):
 
 
 def test_operator_page_contains_competition_controls():
-    html = TestClient(create_app()).get("/").text
-    for value in ("Textual KIS", "Video Q&amp;A", "TRAKE", "visual_score", "ocr_score", "asr_score", "evidence_sources", "Copy submission"):
+    # The refactored frontend splits runtime JS/CSS out of index.html into
+    # served assets (/scripts/*.js, /styles/main.css). Assertions that target
+    # competition-control strings and safe-DOM properties therefore now read
+    # the served assets rather than the inline page; security intent is
+    # preserved (no onclick=, no innerHTML, no eval, listeners via addEventListener).
+    client = TestClient(create_app())
+    html = client.get("/").text
+    for value in ("Textual KIS", "Video Q&amp;A", "TRAKE", "Image Search"):
         assert value in html
-    assert "fetch('/api/search'" in html
-    assert "onclick=" not in html and "innerHTML" not in html
-    assert "addEventListener('click'" in html
+    api_js = client.get("/scripts/api.js").text
+    app_js = client.get("/scripts/app.js").text
+    assert "fetch('/api/search'" in api_js
+    assert "fetch('/api/search/image?top_k=100'" in api_js
+    for value in ("visual_score", "ocr_score", "asr_score", "evidence_sources", "Copy submission"):
+        assert value in app_js
+    assert "addEventListener('click'" in app_js
+    # Check served runtime bodies for unsafe constructs. index.html is the
+    # page at "/"; the rest are asset routes.
+    for path, asset in (("/", "index.html"), ("/styles/main.css", "styles/main.css"),
+                        ("/scripts/api.js", "scripts/api.js"),
+                        ("/scripts/app.js", "scripts/app.js"),
+                        ("/scripts/shortcuts.js", "scripts/shortcuts.js")):
+        body = client.get(path).text
+        assert f"<html" in body or "function" in body or "{" in body, asset
+        assert "onclick=" not in body, asset
+        assert "innerHTML" not in body, asset
+        assert "eval(" not in body, asset
+
+
+def test_frontend_static_assets_are_served_and_traversal_rejected(tmp_path):
+    client = TestClient(create_app(media_root=tmp_path))
+    expected = {
+        "/": "text/html",
+        "/styles/main.css": "text/css",
+        "/scripts/api.js": "text/javascript",
+        "/scripts/app.js": "text/javascript",
+        "/scripts/shortcuts.js": "text/javascript",
+    }
+    for path, ctype in expected.items():
+        res = client.get(path)
+        assert res.status_code == 200, path
+        assert res.headers["content-type"].startswith(ctype), path
+    # New asset routes must not allow path traversal outside frontend/src.
+    for path in ("/scripts/../../main.py", "/styles/%2e%2e%2fmain.py",
+                 "/scripts/..%2f..%2fmain.py", "/scripts/nope.js", "/styles/nope.css"):
+        assert client.get(path).status_code == 404, path
 
 
 def test_unconfigured_search_and_path_traversal_are_rejected(tmp_path):

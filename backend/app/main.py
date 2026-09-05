@@ -88,15 +88,34 @@ def create_app(search_handler=None, media_root=None, configured_search=None):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         return response
 
-    frontend = Path(__file__).parents[2] / "frontend" / "src" / "index.html"
+    frontend = Path(__file__).parents[2] / "frontend" / "src"
+    frontend_root = frontend.resolve()
     configured_search = configured_search or ConfiguredSearch(media_root)
     uses_configured_search = search_handler is None
     search_handler = search_handler or (configured_search.handle if configured_search.configured else None)
     media_root = Path(media_root or configured_search.processed_root or "data/processed/videos").resolve()
 
+    def _frontend_asset(subdir: str, filename: str):
+        if not filename or "/" in filename or "\\" in filename or ".." in filename:
+            raise HTTPException(404, "asset not found")
+        asset_dir = (frontend_root / subdir).resolve()
+        path = (asset_dir / filename).resolve()
+        if (not asset_dir.is_relative_to(frontend_root)
+                or not path.is_relative_to(asset_dir) or not path.is_file()):
+            raise HTTPException(404, "asset not found")
+        return FileResponse(path)
+
     @app.get("/")
     def index():
-        return FileResponse(frontend)
+        return FileResponse(frontend / "index.html")
+
+    @app.get("/styles/{filename}")
+    def style(filename: str):
+        return _frontend_asset("styles", filename)
+
+    @app.get("/scripts/{filename}")
+    def script(filename: str):
+        return _frontend_asset("scripts", filename)
 
     def health_payload():
         from backend.app.runtime.device_policy import runtime_summary
