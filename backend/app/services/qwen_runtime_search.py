@@ -132,6 +132,7 @@ class QwenRuntimeSearch:
         self._timeline = {}
         self._dimension = None
         self._generation_id = None
+        self._validated_generation_id = None
         # Attributes read by the operator API layer.
         self.last_query_plan = None
         self.last_query_metrics = {}
@@ -237,12 +238,27 @@ class QwenRuntimeSearch:
             "ocr_records": len(self._ocr_records) if initialized else 0,
             "asr_records": len(self._asr_records) if initialized else 0,
             "weights_present": weights_available(self.model_dir),
+            "capabilities": {
+                "kis": True,
+                "qa": True,
+                "trake": True,
+                "image": False,
+                "thumbnails": False,
+                "raw_video_preview": False,
+            },
         }
 
     def readiness(self) -> dict[str, Any]:
         if not self.configured:
             return {"ready": False, "reason": "VIDEO_PROCESSED_ROOT is not configured"}
         try:
+            from backend.app.video.frame_index import current_generation_id
+
+            generation_id = current_generation_id(self._index_root())
+            if not generation_id:
+                return {"ready": False, "reason": "CURRENT index generation is missing"}
+            if generation_id == self._validated_generation_id:
+                return {"ready": True, "generation_id": generation_id}
             bundle = load_current_frame_index(self._index_root())
             encoder_identity = bundle.metadata.get("encoder_identity") or {}
             if str(encoder_identity.get("backend", "")).lower() not in QWEN_BACKEND_NAMES:
@@ -254,7 +270,10 @@ class QwenRuntimeSearch:
                     "ready": False,
                     "reason": f"Qwen3-VL model weights are not available at {self.model_dir}",
                 }
-            return {"ready": True, "generation_id": bundle.metadata["generation_id"]}
+            # Cache the validated generation so readiness healthchecks do not
+            # re-hash the artifact bundle on every poll (mirrors ConfiguredSearch).
+            self._validated_generation_id = generation_id
+            return {"ready": True, "generation_id": generation_id}
         except Exception as exc:  # mirror ConfiguredSearch.readiness behavior
             return {"ready": False, "reason": f"invalid search artifacts: {type(exc).__name__}"}
 
@@ -346,21 +365,105 @@ class QwenRuntimeSearch:
 
     # -- API entry points ---------------------------------------------------
 
+    @staticmethod
+    def _qa_answer(row: dict[str, Any]) -> str:
+        """Answer a Q&A row from its top OCR/ASR evidence (100-char cap)."""
+        evidence = (row.get("ocr_evidence") or row.get("asr_evidence") or "").strip()
+        if not evidence:
+            return ""
+        return evidence[:100]
+
+    def search_trake(self, events: list[str], top_k: int = 100) -> list[dict[str, Any]]:
+        """Ordered TRAKE: query each event, then enforce one video + increasing frames.
+
+        Mirrors the verified runtime guidance: split the ordered events, retrieve
+        candidates for each, and keep the single video whose frames can cover the
+        full event sequence in strictly increasing frame order. If no single video
+        covers every event, an explicit error is raised instead of returning a
+        wrong-space or cross-video fallback.
+        """
+        self._initialize()
+        events = [event for event in events if isinstance(event, str) and event.strip()]
+        if not events:
+            raise ValueError("TRAKE requires a non-empty ordered events list")
+
+        per_event = [
+            self.search_single(event, top_k=max(10, top_k)) for event in events
+        ]
+
+        # Candidate videos: union of videos present in the first event's results
+        # (a video cannot lead the sequence if it has no first-event candidate).
+        videos = {row["video_id"] for row in per_event[0]}
+        best_video = None
+        best_sequence = []
+        for video in sorted(videos):
+            sequence = []
+            previous = -1
+            for event_rows in per_event:
+                chosen = next(
+                    (
+                        row for row in event_rows
+                        if row["video_id"] == video
+                        and row["source_frame_index_zero_based"] > previous
+                    ),
+                    None,
+                )
+                if chosen is None:
+                    sequence = []
+                    break
+                sequence.append(chosen)
+                previous = chosen["source_frame_index_zero_based"]
+            if len(sequence) > len(best_sequence):
+                best_video = video
+                best_sequence = sequence
+
+        if best_video is None or len(best_sequence) != len(events):
+            raise ValueError(
+                "TRAKE: no single video covers every event in increasing frame order"
+            )
+
+        frame_ids = [int(row["source_frame_index_zero_based"]) for row in best_sequence]
+        return [{
+            "video_id": best_video,
+            "frame_id": frame_ids[0],
+            "frame_ids": frame_ids,
+            "source_frame_index_zero_based": frame_ids[0],
+            "frame_uid": f"{best_video}:{str(frame_ids[0]).zfill(9)}",
+            "timestamp_seconds": best_sequence[0].get("timestamp_seconds"),
+            "score": float(sum(row["score"] for row in best_sequence) / len(best_sequence)),
+            "visual_score": float(sum(row["visual_score"] for row in best_sequence) / len(best_sequence)),
+            "ocr_score": float(sum(row["ocr_score"] for row in best_sequence) / len(best_sequence)),
+            "asr_score": float(sum(row["asr_score"] for row in best_sequence) / len(best_sequence)),
+            "events": [{"frame_id": frame_id} for frame_id in frame_ids],
+        }]
+
     def handle(self, request: dict[str, Any]) -> list[dict[str, Any]]:
-        """Serves ``POST /api/search`` request payloads."""
+        """Serves ``POST /api/search`` request payloads with explicit capability errors."""
         query_type = request.get("query_type", "kis")
         top_k = int(request.get("top_k", 100))
-        if query_type == "trake":
-            raise ValueError(
-                "query_type 'trake' is not supported by the qwen3_vl runtime adapter"
-            )
-        if query_type not in ("kis", "qa"):
-            raise ValueError(f"unsupported query_type: {query_type}")
-        query = request.get("query", "")
-        if not isinstance(query, str) or not query.strip():
-            raise ValueError("query is required")
         started = time.perf_counter()
-        results = self.search_single(query, top_k=top_k)
+
+        if query_type == "trake":
+            events = request.get("events")
+            if not isinstance(events, list) or not events:
+                raise ValueError("TRAKE requires a non-empty ordered events list")
+            results = self.search_trake(events, top_k=top_k)
+        elif query_type in ("kis", "qa"):
+            query = request.get("query", "")
+            if not isinstance(query, str) or not query.strip():
+                raise ValueError("query is required")
+            results = self.search_single(query, top_k=top_k)
+            if query_type == "qa":
+                for row in results:
+                    row["answer"] = self._qa_answer(row)
+        elif query_type == "image":
+            raise RuntimeError(
+                "image search is not supported by the qwen3_vl backend; "
+                "the packed DB is a text-query frame index"
+            )
+        else:
+            raise ValueError(f"unsupported query_type: {query_type}")
+
         self.last_query_metrics = {
             "backend": "qwen3_vl",
             "generation_id": self._generation_id,
@@ -371,6 +474,6 @@ class QwenRuntimeSearch:
     def search_image(self, image_or_path, top_k=100, deduplicate=True):
         """Image queries are outside the verified text runtime contract."""
         raise RuntimeError(
-            "image search is not supported by the qwen3_vl runtime adapter; "
+            "image search is not supported by the qwen3_vl backend; "
             "the packed DB is a text-query frame index"
         )

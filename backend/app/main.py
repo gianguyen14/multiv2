@@ -78,16 +78,24 @@ class SearchRequest(BaseModel):
 
 
 def _build_configured_search(media_root):
-    """Select the search provider by ``SEARCH_ENCODER`` (default: siglip2)."""
-    encoder_kind = os.getenv("SEARCH_ENCODER", "siglip2").strip().lower()
-    if encoder_kind == "siglip2":
-        return ConfiguredSearch(media_root)
-    if encoder_kind in ("qwen3_vl", "qwen3-vl", "qwen"):
+    """Select the production search backend.
+
+    ``SEARCH_BACKEND`` is the canonical selector; ``SEARCH_ENCODER`` is accepted
+    as a legacy alias. The production default is ``qwen3_vl`` (Qwen3-VL-Embedding-2B
+    over the packed 47,430 x 1024-d DB). ``siglip2`` remains available only as an
+    explicit legacy mode. Unknown values fail loudly at startup so a deployment can
+    never silently fall back to the wrong embedding space.
+    """
+    backend = (os.getenv("SEARCH_BACKEND") or os.getenv("SEARCH_ENCODER") or "qwen3_vl")
+    backend = backend.strip().lower()
+    if backend in ("qwen3_vl", "qwen3-vl", "qwen"):
         from backend.app.services.qwen_runtime_search import QwenRuntimeSearch
 
         return QwenRuntimeSearch(processed_root=media_root)
+    if backend == "siglip2":
+        return ConfiguredSearch(media_root)
     raise RuntimeError(
-        f"Unknown SEARCH_ENCODER={encoder_kind!r}; supported values: siglip2, qwen3_vl"
+        f"Unknown SEARCH_BACKEND={backend!r}; supported values: qwen3_vl (default), siglip2 (legacy)"
     )
 
 
@@ -170,7 +178,9 @@ def create_app(search_handler=None, media_root=None, configured_search=None):
             return resp
         except (FileNotFoundError, RuntimeError) as exc:
             logger.exception("search unavailable")
-            raise HTTPException(503, "search is unavailable; check projectctl.py status") from exc
+            raise HTTPException(
+                503, f"search is unavailable; check projectctl.py status: {exc}"
+            ) from exc
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
 
@@ -200,7 +210,9 @@ def create_app(search_handler=None, media_root=None, configured_search=None):
             raise HTTPException(400, str(exc)) from exc
         except (FileNotFoundError, RuntimeError) as exc:
             logger.exception("image search failed")
-            raise HTTPException(503, "image search is unavailable; check projectctl.py status") from exc
+            raise HTTPException(
+                503, f"image search is unavailable; check projectctl.py status: {exc}"
+            ) from exc
         finally:
             image.close()
 

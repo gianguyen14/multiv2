@@ -227,13 +227,65 @@ def test_qa_uses_same_pipeline_and_empty_query_rejected(runtime, tmp_path):
         provider.handle({"query_type": "qa", "query": "   ", "top_k": 2})
 
 
-def test_trake_and_image_unsupported(runtime, tmp_path):
+def test_trake_success_returns_ordered_frames(runtime, tmp_path):
     model_dir = _touch_model(tmp_path / "model")
     provider = _search(runtime, model_dir, "x")
-    with pytest.raises(ValueError, match="trake"):
-        provider.handle({"query_type": "trake", "events": ["a"], "top_k": 5})
+    results = provider.handle(
+        {"query_type": "trake", "events": ["t0", "t2"], "top_k": 5}
+    )
+    assert len(results) == 1
+    row = results[0]
+    assert row["video_id"] == VIDEO
+    assert row["frame_ids"] == [0, 2]
+    assert row["frame_id"] == 0
+    assert row["events"] == [{"frame_id": 0}, {"frame_id": 2}]
+
+
+def test_trake_impossible_sequence_errors(runtime, tmp_path):
+    model_dir = _touch_model(tmp_path / "model")
+    provider = _search(runtime, model_dir, "x")
+    # Six identical events exhaust the six candidate frames; the seventh event
+    # cannot find a strictly larger frame in the same video.
+    with pytest.raises(ValueError, match="no single video covers every event"):
+        provider.handle({"query_type": "trake", "events": ["t0"] * 7, "top_k": 5})
+
+
+def test_trake_empty_events_rejected(runtime, tmp_path):
+    model_dir = _touch_model(tmp_path / "model")
+    provider = _search(runtime, model_dir, "x")
+    with pytest.raises(ValueError, match="non-empty ordered events"):
+        provider.handle({"query_type": "trake", "events": [], "top_k": 5})
+
+
+def test_qa_attaches_evidence_answer(runtime, tmp_path):
+    model_dir = _touch_model(tmp_path / "model")
+    provider = _search(runtime, model_dir, "x")
+    results = provider.handle(
+        {"query_type": "qa", "query": "bien so 50h 12345", "top_k": 6}
+    )
+    answered = [row for row in results if row.get("answer")]
+    assert answered
+    assert answered[0]["answer"] == "bien so 50H 12345"
+    assert len(answered[0]["answer"]) <= 100
+
+
+def test_image_search_explicit_error(runtime, tmp_path):
+    model_dir = _touch_model(tmp_path / "model")
+    provider = _search(runtime, model_dir, "x")
     with pytest.raises(RuntimeError, match="image search is not supported"):
         provider.search_image(object(), top_k=5)
+    with pytest.raises(RuntimeError, match="image search is not supported"):
+        provider.handle({"query_type": "image", "query": "x", "top_k": 5})
+
+
+def test_capabilities_reported(runtime, tmp_path):
+    model_dir = _touch_model(tmp_path / "model")
+    provider = _search(runtime, model_dir, "x")
+    caps = provider.status()["capabilities"]
+    assert caps == {
+        "kis": True, "qa": True, "trake": True, "image": False,
+        "thumbnails": False, "raw_video_preview": False,
+    }
 
 
 def test_search_is_readonly(runtime, tmp_path):
@@ -252,12 +304,28 @@ def test_search_is_readonly(runtime, tmp_path):
     assert after == before
 
 
+def test_create_app_defaults_to_qwen_backend(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from backend.app.main import create_app
+
+    monkeypatch.delenv("SEARCH_BACKEND", raising=False)
+    monkeypatch.delenv("SEARCH_ENCODER", raising=False)
+    client = TestClient(create_app(media_root=tmp_path))
+    health = client.get("/health").json()
+    assert health["search"]["backend"] == "qwen3_vl"
+    assert health["search"]["capabilities"]["kis"] is True
+    assert health["search"]["capabilities"]["image"] is False
+    assert client.get("/health/ready").status_code == 503
+
+
 def test_create_app_selects_provider_by_env(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
 
     from backend.app.main import create_app
 
-    monkeypatch.setenv("SEARCH_ENCODER", "qwen3_vl")
+    # Canonical SEARCH_BACKEND selector.
+    monkeypatch.setenv("SEARCH_BACKEND", "qwen3_vl")
     client = TestClient(create_app(media_root=tmp_path))
     health = client.get("/health").json()
     assert health["search"]["backend"] == "qwen3_vl"
@@ -267,9 +335,48 @@ def test_create_app_selects_provider_by_env(tmp_path, monkeypatch):
     assert client.get("/health/ready").status_code == 503
 
 
-def test_create_app_rejects_unknown_encoder(monkeypatch):
+def test_create_app_accepts_legacy_encoder_alias(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
     from backend.app.main import create_app
 
-    monkeypatch.setenv("SEARCH_ENCODER", "banana")
-    with pytest.raises(RuntimeError, match="Unknown SEARCH_ENCODER"):
+    monkeypatch.delenv("SEARCH_BACKEND", raising=False)
+    monkeypatch.setenv("SEARCH_ENCODER", "qwen3_vl")
+    client = TestClient(create_app(media_root=tmp_path))
+    assert client.get("/health").json()["search"]["backend"] == "qwen3_vl"
+
+
+def test_create_app_legacy_siglip_backend(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from backend.app.main import create_app
+
+    monkeypatch.setenv("SEARCH_BACKEND", "siglip2")
+    client = TestClient(create_app(media_root=tmp_path))
+    search = client.get("/health").json()["search"]
+    # ConfiguredSearch reports device fields, not a qwen backend.
+    assert "backend" not in search
+    assert search["configured"] is True
+
+
+def test_create_app_rejects_unknown_backend(monkeypatch):
+    from backend.app.main import create_app
+
+    monkeypatch.setenv("SEARCH_BACKEND", "banana")
+    with pytest.raises(RuntimeError, match="Unknown SEARCH_BACKEND"):
         create_app()
+
+
+def test_siglip_backend_refuses_qwen_index(tmp_path):
+    """SigLIP2 must never silently query a Qwen-built generation."""
+    from backend.app.services.configured_search import ConfiguredSearch
+
+    root = tmp_path / "runtime"
+    (root / "index").mkdir(parents=True)
+    _write_generation(root / "index", dim=4, n=2, backend="qwen3_vl_embedding_2b")
+    provider = ConfiguredSearch(processed_root=root)
+    ready = provider.readiness()
+    assert ready["ready"] is False
+    assert "SEARCH_BACKEND" in ready["reason"]
+    with pytest.raises(RuntimeError, match="Qwen3-VL embeddings"):
+        provider._initialize()

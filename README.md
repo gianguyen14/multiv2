@@ -233,27 +233,32 @@ http://127.0.0.1:8000/health/ready
 http://127.0.0.1:8000/health
 ```
 
-## Qwen3-VL runtime mode (optional)
+## Qwen3-VL production backend (default)
 
-The default search encoder is SigLIP2. A deployment can instead serve text
-queries from an existing packed **Qwen3-VL-Embedding-2B** DB (FAISS
-generation + OCR/ASR spool) without ingesting or re-encoding anything by
-selecting the runtime adapter:
+The production search backend is **Qwen3-VL-Embedding-2B** over the existing
+packed 47,430 x 1024-d DB (FAISS generation + OCR/ASR spool), selected by
+`SEARCH_BACKEND=qwen3_vl` (the default). The DB is mounted and read in place —
+never ingested, re-encoded, copied or rewritten. The SigLIP2 path
+(`SEARCH_BACKEND=siglip2`) remains available only as an explicit legacy mode
+and refuses to query a Qwen-built index.
 
 ```bash
 # .env
-SEARCH_ENCODER=qwen3_vl
+SEARCH_BACKEND=qwen3_vl
 AIC_DATA_DIR=/home/hermes/aic/data          # host dir containing aic-db-v1/
 AIC_MODELS_DIR=/home/hermes/aic/models      # host dir containing Qwen3-VL-Embedding-2B/
 VIDEO_PROCESSED_ROOT=/data/aic-db-v1/runtime
 QWEN3_VL_MODEL_DIR=/models/Qwen3-VL-Embedding-2B
 ```
 
-The adapter mounts/reads the existing DB in place (read-only), validates the
-generation (vector/mapping/payload counts, dimension, artifact hashes) and
-reproduces the verified query runtime ranking. `SEARCH_ENCODER=siglip2` (the
-default) is unchanged. Image search and TRAKE are not supported by the Qwen
-runtime adapter; the SigLIP2 path remains available for those modes.
+Capabilities: KIS, QA (evidence-based answers from OCR/ASR), and TRAKE
+(one-video, increasing-frame sequences) text queries. Image search, frame
+thumbnails, and raw-video preview are **not** available in qwen3_vl mode
+(the packed DB has no JPEGs); the API reports explicit capability errors and
+the frontend degrades gracefully (placeholder frames). Raw video is only ever
+touched by lazy, explicit preview/refine operations and is never downloaded in
+the default path. `SEARCH_ENCODER` is accepted as a legacy alias for
+`SEARCH_BACKEND`.
 
 Linux / WSL2:
 
