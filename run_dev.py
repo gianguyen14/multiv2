@@ -37,6 +37,8 @@ FRONTEND_HOST = "127.0.0.1"
 FRONTEND_PORT = 3000
 BACKEND_HOST = "127.0.0.1"
 BACKEND_PORT = 8000
+# Per-socket-operation timeout; allow time for model inference, but never hang.
+BACKEND_TIMEOUT_SECONDS = 120.0
 
 HOP_BY_HOP_HEADERS = {
     "connection",
@@ -101,7 +103,10 @@ class DevRequestHandler(SimpleHTTPRequestHandler):
         except RuntimeError:
             return
 
-        connection = http.client.HTTPConnection(BACKEND_HOST, BACKEND_PORT)
+        connection = http.client.HTTPConnection(
+            BACKEND_HOST, BACKEND_PORT, timeout=BACKEND_TIMEOUT_SECONDS
+        )
+        response_started = False
 
         try:
             connection.request(
@@ -119,13 +124,21 @@ class DevRequestHandler(SimpleHTTPRequestHandler):
                     continue
                 self.send_header(name, value)
             self.send_header("Connection", "close")
-            self.end_headers()
             self.close_connection = True
+            response_started = True
+            self.end_headers()
 
             if self.command != "HEAD":
                 shutil.copyfileobj(upstream, self.wfile)
-        except (ConnectionError, OSError, http.client.HTTPException) as exc:
-            self.send_error(502, f"Backend proxy error: {exc}")
+        except (OSError, http.client.HTTPException) as exc:
+            self.close_connection = True
+            if not response_started:
+                if isinstance(exc, TimeoutError):
+                    self.send_error(504, "Backend proxy timed out.")
+                else:
+                    self.send_error(502, f"Backend proxy error: {exc}")
+            # After headers have been sent, close the truncated response rather
+            # than appending a second HTTP response to its body.
         finally:
             connection.close()
 

@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -34,19 +36,23 @@ def test_operator_page_contains_competition_controls():
         assert value in html
     api_js = client.get("/scripts/api.js").text
     app_js = client.get("/scripts/app.js").text
-    assert "fetch('/api/search'" in api_js
-    assert "fetch('/api/search/image?top_k=100'" in api_js
+    # Match endpoint values and event wiring, independent of quote/spacing style.
+    endpoints = re.findall(r"\bfetch\s*\(\s*['\"]([^'\"]+)['\"]", api_js)
+    assert "/api/search" in endpoints
+    assert "/api/search/image?top_k=100" in endpoints
     for value in ("visual_score", "ocr_score", "asr_score", "evidence_sources", "Copy submission"):
         assert value in app_js
-    assert "addEventListener('click'" in app_js
+    assert re.search(r"\baddEventListener\s*\(\s*['\"]click['\"]\s*,", app_js)
     # Check served runtime bodies for unsafe constructs. index.html is the
     # page at "/"; the rest are asset routes.
     for path, asset in (("/", "index.html"), ("/styles/main.css", "styles/main.css"),
                         ("/scripts/api.js", "scripts/api.js"),
                         ("/scripts/app.js", "scripts/app.js"),
                         ("/scripts/shortcuts.js", "scripts/shortcuts.js")):
-        body = client.get(path).text
-        assert f"<html" in body or "function" in body or "{" in body, asset
+        response = client.get(path)
+        assert response.status_code == 200, asset
+        body = response.text
+        assert "<html" in body or "function" in body or "{" in body, asset
         assert "onclick=" not in body, asset
         assert "innerHTML" not in body, asset
         assert "eval(" not in body, asset
@@ -54,17 +60,19 @@ def test_operator_page_contains_competition_controls():
 
 def test_frontend_static_assets_are_served_and_traversal_rejected(tmp_path):
     client = TestClient(create_app(media_root=tmp_path))
+    javascript_types = {"text/javascript", "application/javascript"}
     expected = {
-        "/": "text/html",
-        "/styles/main.css": "text/css",
-        "/scripts/api.js": "text/javascript",
-        "/scripts/app.js": "text/javascript",
-        "/scripts/shortcuts.js": "text/javascript",
+        "/": {"text/html"},
+        "/styles/main.css": {"text/css"},
+        "/scripts/api.js": javascript_types,
+        "/scripts/app.js": javascript_types,
+        "/scripts/shortcuts.js": javascript_types,
     }
-    for path, ctype in expected.items():
+    for path, content_types in expected.items():
         res = client.get(path)
         assert res.status_code == 200, path
-        assert res.headers["content-type"].startswith(ctype), path
+        media_type = res.headers["content-type"].split(";", 1)[0].strip().lower()
+        assert media_type in content_types, path
     # New asset routes must not allow path traversal outside frontend/src.
     for path in ("/scripts/../../main.py", "/styles/%2e%2e%2fmain.py",
                  "/scripts/..%2f..%2fmain.py", "/scripts/nope.js", "/styles/nope.css"):
