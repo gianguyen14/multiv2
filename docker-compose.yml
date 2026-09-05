@@ -19,8 +19,10 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
-      - VIDEO_PROCESSED_ROOT=/data/processed
-      - MODEL_CACHE_DIR=/models
+      - VIDEO_PROCESSED_ROOT=${VIDEO_PROCESSED_ROOT:-/data/processed}
+      - MODEL_CACHE_DIR=${MODEL_CACHE_DIR:-/models}
+      - SEARCH_BACKEND=${SEARCH_BACKEND:-qwen3_vl}
+      - QWEN3_VL_MODEL_DIR=${QWEN3_VL_MODEL_DIR:-}
       - HF_HOME=/cache/huggingface
       - TRANSFORMERS_CACHE=/cache/huggingface
       - TORCH_HOME=/cache/torch

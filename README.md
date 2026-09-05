@@ -233,6 +233,33 @@ http://127.0.0.1:8000/health/ready
 http://127.0.0.1:8000/health
 ```
 
+## Qwen3-VL production backend (default)
+
+The production search backend is **Qwen3-VL-Embedding-2B** over the existing
+packed 47,430 x 1024-d DB (FAISS generation + OCR/ASR spool), selected by
+`SEARCH_BACKEND=qwen3_vl` (the default). The DB is mounted and read in place —
+never ingested, re-encoded, copied or rewritten. The SigLIP2 path
+(`SEARCH_BACKEND=siglip2`) remains available only as an explicit legacy mode
+and refuses to query a Qwen-built index.
+
+```bash
+# .env
+SEARCH_BACKEND=qwen3_vl
+AIC_DATA_DIR=/home/hermes/aic/data          # host dir containing aic-db-v1/
+AIC_MODELS_DIR=/home/hermes/aic/models      # host dir containing Qwen3-VL-Embedding-2B/
+VIDEO_PROCESSED_ROOT=/data/aic-db-v1/runtime
+QWEN3_VL_MODEL_DIR=/models/Qwen3-VL-Embedding-2B
+```
+
+Capabilities: KIS, QA (evidence-based answers from OCR/ASR), and TRAKE
+(one-video, increasing-frame sequences) text queries. Image search, frame
+thumbnails, and raw-video preview are **not** available in qwen3_vl mode
+(the packed DB has no JPEGs); the API reports explicit capability errors and
+the frontend degrades gracefully (placeholder frames). Raw video is only ever
+touched by lazy, explicit preview/refine operations and is never downloaded in
+the default path. `SEARCH_ENCODER` is accepted as a legacy alias for
+`SEARCH_BACKEND`.
+
 Linux / WSL2:
 
 ```bash

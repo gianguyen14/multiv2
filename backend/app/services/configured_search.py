@@ -106,6 +106,23 @@ class ConfiguredSearch:
     def configured(self):
         return self.processed_root is not None
 
+    def _guard_index_backend(self, bundle) -> None:
+        """Refuse to run the SigLIP2 encoder against a Qwen3-VL index.
+
+        A Qwen-built generation is schema-compatible with the shared loader, so
+        without this guard a misconfigured SigLIP2 deployment would query a Qwen
+        DB with the wrong embedding space and produce meaningless scores.
+        """
+        from backend.app.services.qwen_runtime_search import QWEN_BACKEND_NAMES
+
+        backend = str((bundle.metadata.get("encoder_identity") or {}).get("backend", "")).lower()
+        if backend in QWEN_BACKEND_NAMES:
+            raise RuntimeError(
+                "active generation was built with Qwen3-VL embeddings "
+                f"(backend={backend!r}); set SEARCH_BACKEND=qwen3_vl "
+                "instead of using the siglip2 backend"
+            )
+
     def _initialize(self):
         if self._bundle is not None:
             return
@@ -114,6 +131,7 @@ class ConfiguredSearch:
         with self._lock:
             if self._bundle is None:
                 bundle = load_current_frame_index(self.processed_root / "index")
+                self._guard_index_backend(bundle)
                 encoder = self.encoder_factory()
                 ocr, asr = [], []
                 store = TextEvidenceStore(self.processed_root)
@@ -128,7 +146,15 @@ class ConfiguredSearch:
         return {"configured": self.configured, "initialized": self._bundle is not None,
             "visual_device": self.device, "visual_device_requested": self.device_selection.requested,
             "visual_device_source": self.device_selection.source,
-            "visual_device_fallback": self.device_selection.fallback}
+            "visual_device_fallback": self.device_selection.fallback,
+            "capabilities": {
+                "kis": True,
+                "qa": True,
+                "trake": True,
+                "image": True,
+                "thumbnails": True,
+                "raw_video_preview": True,
+            }}
 
     def readiness(self):
         if not self.configured:
@@ -142,8 +168,11 @@ class ConfiguredSearch:
             if not generation_id:
                 return {"ready": False, "reason": "CURRENT index generation is missing"}
             if generation_id != self._validated_generation_id:
-                validate_generation(self.processed_root / "index" / "generations" / generation_id,
-                    generation_id)
+                bundle = validate_generation(
+                    self.processed_root / "index" / "generations" / generation_id,
+                    generation_id,
+                )
+                self._guard_index_backend(bundle)
                 self._validated_generation_id = generation_id
             if self.requires_local_model:
                 from backend.app.model_cache import visual_status
@@ -151,6 +180,8 @@ class ConfiguredSearch:
                     return {"ready": False, "reason": "SigLIP2 model is not available locally"}
             return {"ready": True, "generation_id": generation_id}
         except Exception as exc:
+            if "SEARCH_BACKEND" in str(exc) or "Qwen3-VL embeddings" in str(exc):
+                return {"ready": False, "reason": str(exc)}
             return {"ready": False, "reason": f"invalid search artifacts: {type(exc).__name__}"}
 
     def _search_single_query(self, query, top_k=100):

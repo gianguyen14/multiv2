@@ -1,24 +1,33 @@
 import io
+import logging
 import os
 from email.parser import BytesParser
 from email.policy import default as email_policy
 from pathlib import Path
+from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Request, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field, field_validator
-from typing import Literal
-
-import logging
-
-logger = logging.getLogger(__name__)
 
 from backend.app.services.configured_search import ConfiguredSearch
 
+logger = logging.getLogger(__name__)
 
 MAX_IMAGE_UPLOAD_BYTES = 15 * 1024 * 1024
 SUPPORTED_IMAGE_FORMATS = {"JPEG", "PNG", "WEBP"}
+
+
+def _debug_api_errors_enabled() -> bool:
+    return os.getenv("DEBUG_API_ERRORS", "false").strip().lower() in {"1", "true", "yes"}
+
+
+def _unavailable_detail(kind: str, exc: Exception) -> str:
+    """Return a client-safe 503 message; raw exception text is debug-only."""
+    if _debug_api_errors_enabled():
+        return f"{kind} is unavailable: {type(exc).__name__}: {exc}"
+    return f"{kind} is unavailable"
 
 
 async def _read_limited_body(request: Request, limit: int = MAX_IMAGE_UPLOAD_BYTES) -> bytes:
@@ -77,6 +86,28 @@ class SearchRequest(BaseModel):
         return events
 
 
+def _build_configured_search(media_root):
+    """Select the production search backend.
+
+    ``SEARCH_BACKEND`` is the canonical selector; ``SEARCH_ENCODER`` is accepted
+    as a legacy alias. The production default is ``qwen3_vl`` (Qwen3-VL-Embedding-2B
+    over the packed 47,430 x 1024-d DB). ``siglip2`` remains available only as an
+    explicit legacy mode. Unknown values fail loudly at startup so a deployment can
+    never silently fall back to the wrong embedding space.
+    """
+    backend = (os.getenv("SEARCH_BACKEND") or os.getenv("SEARCH_ENCODER") or "qwen3_vl")
+    backend = backend.strip().lower()
+    if backend in ("qwen3_vl", "qwen3-vl", "qwen"):
+        from backend.app.services.qwen_runtime_search import QwenRuntimeSearch
+
+        return QwenRuntimeSearch(processed_root=media_root)
+    if backend == "siglip2":
+        return ConfiguredSearch(media_root)
+    raise RuntimeError(
+        f"Unknown SEARCH_BACKEND={backend!r}; supported values: qwen3_vl (default), siglip2 (legacy)"
+    )
+
+
 def create_app(search_handler=None, media_root=None, configured_search=None):
     app = FastAPI(title="AIC 2026 Retrieval")
 
@@ -90,7 +121,7 @@ def create_app(search_handler=None, media_root=None, configured_search=None):
 
     frontend = Path(__file__).parents[2] / "frontend" / "src"
     frontend_root = frontend.resolve()
-    configured_search = configured_search or ConfiguredSearch(media_root)
+    configured_search = configured_search or _build_configured_search(media_root)
     uses_configured_search = search_handler is None
     search_handler = search_handler or (configured_search.handle if configured_search.configured else None)
     media_root = Path(media_root or configured_search.processed_root or "data/processed/videos").resolve()
@@ -156,10 +187,9 @@ def create_app(search_handler=None, media_root=None, configured_search=None):
             return resp
         except (FileNotFoundError, RuntimeError) as exc:
             logger.exception("search unavailable")
-            raise HTTPException(503, "search is unavailable; check projectctl.py status") from exc
+            raise HTTPException(503, _unavailable_detail("search", exc)) from exc
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
-
 
     @app.post("/api/search/image")
     async def search_image_endpoint(
@@ -169,6 +199,9 @@ def create_app(search_handler=None, media_root=None, configured_search=None):
     ):
         if not configured_search.configured:
             raise HTTPException(503, "search index is not configured")
+        capabilities = configured_search.status().get("capabilities") or {}
+        if capabilities and not capabilities.get("image", True):
+            raise HTTPException(503, "image search is not supported by the active search backend")
         content_type = request.headers.get("content-type", "").lower()
         if not (content_type.startswith("multipart/form-data")
                 or content_type.split(";", 1)[0].strip() in {"image/jpeg", "image/png", "image/webp"}):
@@ -186,7 +219,7 @@ def create_app(search_handler=None, media_root=None, configured_search=None):
             raise HTTPException(400, str(exc)) from exc
         except (FileNotFoundError, RuntimeError) as exc:
             logger.exception("image search failed")
-            raise HTTPException(503, "image search is unavailable; check projectctl.py status") from exc
+            raise HTTPException(503, _unavailable_detail("image search", exc)) from exc
         finally:
             image.close()
 
