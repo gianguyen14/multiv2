@@ -1,24 +1,33 @@
 import io
+import logging
 import os
 from email.parser import BytesParser
 from email.policy import default as email_policy
 from pathlib import Path
+from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Request, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field, field_validator
-from typing import Literal
-
-import logging
-
-logger = logging.getLogger(__name__)
 
 from backend.app.services.configured_search import ConfiguredSearch
 
+logger = logging.getLogger(__name__)
 
 MAX_IMAGE_UPLOAD_BYTES = 15 * 1024 * 1024
 SUPPORTED_IMAGE_FORMATS = {"JPEG", "PNG", "WEBP"}
+
+
+def _debug_api_errors_enabled() -> bool:
+    return os.getenv("DEBUG_API_ERRORS", "false").strip().lower() in {"1", "true", "yes"}
+
+
+def _unavailable_detail(kind: str, exc: Exception) -> str:
+    """Return a client-safe 503 message; raw exception text is debug-only."""
+    if _debug_api_errors_enabled():
+        return f"{kind} is unavailable: {type(exc).__name__}: {exc}"
+    return f"{kind} is unavailable"
 
 
 async def _read_limited_body(request: Request, limit: int = MAX_IMAGE_UPLOAD_BYTES) -> bytes:
@@ -178,12 +187,9 @@ def create_app(search_handler=None, media_root=None, configured_search=None):
             return resp
         except (FileNotFoundError, RuntimeError) as exc:
             logger.exception("search unavailable")
-            raise HTTPException(
-                503, f"search is unavailable; check projectctl.py status: {exc}"
-            ) from exc
+            raise HTTPException(503, _unavailable_detail("search", exc)) from exc
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
-
 
     @app.post("/api/search/image")
     async def search_image_endpoint(
@@ -193,6 +199,9 @@ def create_app(search_handler=None, media_root=None, configured_search=None):
     ):
         if not configured_search.configured:
             raise HTTPException(503, "search index is not configured")
+        capabilities = configured_search.status().get("capabilities") or {}
+        if capabilities and not capabilities.get("image", True):
+            raise HTTPException(503, "image search is not supported by the active search backend")
         content_type = request.headers.get("content-type", "").lower()
         if not (content_type.startswith("multipart/form-data")
                 or content_type.split(";", 1)[0].strip() in {"image/jpeg", "image/png", "image/webp"}):
@@ -210,9 +219,7 @@ def create_app(search_handler=None, media_root=None, configured_search=None):
             raise HTTPException(400, str(exc)) from exc
         except (FileNotFoundError, RuntimeError) as exc:
             logger.exception("image search failed")
-            raise HTTPException(
-                503, f"image search is unavailable; check projectctl.py status: {exc}"
-            ) from exc
+            raise HTTPException(503, _unavailable_detail("image search", exc)) from exc
         finally:
             image.close()
 
