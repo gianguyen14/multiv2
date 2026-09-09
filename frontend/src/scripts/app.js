@@ -44,6 +44,13 @@
   const metricsPanel = document.querySelector("#metrics-panel");
   const metricsOutput = document.querySelector("#query-metrics");
 
+  const capabilities = {
+    kis: true,
+    qa: true,
+    trake: true,
+    image: false,
+  };
+
   const MODE_LABELS = {
     kis: "KIS",
     qa: "Q&A",
@@ -145,7 +152,7 @@
   }
 
   function setMode(mode, shouldFocus = false) {
-    if (!Object.prototype.hasOwnProperty.call(MODE_LABELS, mode)) {
+    if (!Object.prototype.hasOwnProperty.call(MODE_LABELS, mode) || !capabilities[mode]) {
       return;
     }
 
@@ -697,7 +704,40 @@
     }
   }
 
+  async function loadCapabilities() {
+    try {
+      const response = await fetch("/health/live", { headers: { Accept: "application/json" } });
+      if (!response.ok) return;
+      const data = await response.json();
+      const reported = data && data.search && data.search.capabilities;
+      if (!reported || typeof reported !== "object") return;
+      Object.keys(capabilities).forEach((mode) => {
+        if (typeof reported[mode] === "boolean") capabilities[mode] = reported[mode];
+      });
+      modeButtons.forEach((button) => {
+        const mode = button.dataset.mode;
+        const enabled = Boolean(capabilities[mode]);
+        button.disabled = !enabled;
+        if (enabled) {
+          button.removeAttribute("aria-disabled");
+          button.removeAttribute("title");
+        } else {
+          button.setAttribute("aria-disabled", "true");
+          button.title = "This search mode is unavailable on the active backend.";
+        }
+      });
+    } catch (error) {
+      // Keep safe defaults: text modes remain available, optional image mode stays disabled.
+    }
+  }
+
   modeButtons.forEach((button) => {
+    const mode = button.dataset.mode;
+    if (!capabilities[mode]) {
+      button.disabled = true;
+      button.setAttribute("aria-disabled", "true");
+      button.title = "This search mode is unavailable on the active backend.";
+    }
     button.addEventListener('click', () => {
       setMode(button.dataset.mode, true);
     });
@@ -726,6 +766,8 @@
     event.preventDefault();
     submitSearch();
   });
+
+  loadCapabilities();
 
   window.addEventListener("beforeunload", () => {
     stopLatencyTimer();

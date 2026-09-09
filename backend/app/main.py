@@ -100,7 +100,10 @@ def _build_configured_search(media_root):
     if backend in ("qwen3_vl", "qwen3-vl", "qwen"):
         from backend.app.services.qwen_runtime_search import QwenRuntimeSearch
 
-        return QwenRuntimeSearch(processed_root=media_root)
+        return QwenRuntimeSearch(
+            processed_root=media_root,
+            vision_processed_root=os.getenv("VISION_PROCESSED_ROOT") or None,
+        )
     if backend == "siglip2":
         return ConfiguredSearch(media_root)
     raise RuntimeError(
