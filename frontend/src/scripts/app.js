@@ -43,7 +43,11 @@
   const results = document.querySelector("#results");
   const metricsPanel = document.querySelector("#metrics-panel");
   const metricsOutput = document.querySelector("#query-metrics");
-
+  const videoModal = document.querySelector("#video-modal");
+  const videoModalTitle = document.querySelector("#video-modal-title");
+  const videoModalClose = document.querySelector("#video-modal-close");
+  const videoPlayer = document.querySelector("#video-player");
+  let videoSeekHandler = null;
   const MODE_LABELS = {
     kis: "KIS",
     qa: "Q&A",
@@ -481,6 +485,67 @@
     return true;
   }
 
+  function playableTimestamp(value) {
+    if (value === null || value === undefined || (typeof value === "string" && value.trim() === "")) {
+      return null;
+    }
+    const timestamp = Number(value);
+    return Number.isFinite(timestamp) && timestamp >= 0 ? timestamp : null;
+  }
+
+  function openVideoPlayer(item) {
+    if (!videoModal || !videoPlayer) {
+      return;
+    }
+    const timestamp = playableTimestamp(item.timestamp_seconds);
+    if (timestamp === null) {
+      return;
+    }
+    const label = String(item.video_id ?? "unknown video")
+      + ` · ${formatNumber(timestamp, 3)} s`;
+    videoModalTitle.textContent = label;
+    videoPlayer.src = String(item.video_url);
+    videoPlayer.load();
+    videoModal.hidden = false;
+
+    if (videoSeekHandler) {
+      videoPlayer.removeEventListener("loadedmetadata", videoSeekHandler);
+      videoSeekHandler = null;
+    }
+    videoSeekHandler = () => {
+      if (Number.isFinite(timestamp) && timestamp >= 0) {
+        try {
+          const duration = Number.isFinite(videoPlayer.duration) ? videoPlayer.duration : timestamp;
+          videoPlayer.currentTime = Math.min(timestamp, duration);
+        } catch (error) {
+          // Ignore seek failures (e.g. metadata not yet available).
+        }
+      }
+      const play = videoPlayer.play();
+      if (play && typeof play.catch === "function") {
+        play.catch(() => {});
+      }
+    };
+
+    videoPlayer.addEventListener("loadedmetadata", videoSeekHandler, { once: true });
+    videoPlayer.focus();
+  }
+
+  function closeVideoPlayer() {
+    if (!videoModal || !videoPlayer) {
+      return;
+    }
+    videoPlayer.pause();
+    if (videoSeekHandler) {
+      videoPlayer.removeEventListener("loadedmetadata", videoSeekHandler);
+      videoSeekHandler = null;
+    }
+    videoPlayer.removeAttribute("src");
+    videoPlayer.load();
+    videoPlayer.currentTime = 0;
+    videoModal.hidden = true;
+  }
+
   function createFrameMedia(item, rank) {
     const shell = createNode("div", "frame-shell");
     shell.append(createNode("span", "rank-badge", `#${rank}`));
@@ -584,6 +649,26 @@
         copySubmission(item, mode, context);
       });
       actions.append(copy);
+
+      if (typeof item.video_url === "string" && item.video_url.trim()
+          && playableTimestamp(item.timestamp_seconds) !== null) {
+        const play = createNode("button", "secondary-button", "▶ Play video");
+        play.type = "button";
+        play.addEventListener('click', () => {
+          openVideoPlayer(item);
+        });
+        actions.append(play);
+      }
+      meta.append(actions);
+    } else if (typeof item.video_url === "string" && item.video_url.trim()
+        && playableTimestamp(item.timestamp_seconds) !== null) {
+      const actions = createNode("div", "card-actions");
+      const play = createNode("button", "secondary-button", "▶ Play video");
+      play.type = "button";
+      play.addEventListener('click', () => {
+        openVideoPlayer(item);
+      });
+      actions.append(play);
       meta.append(actions);
     }
 
@@ -739,6 +824,22 @@
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     submitSearch();
+  });
+
+  if (videoModalClose) {
+    videoModalClose.addEventListener('click', closeVideoPlayer);
+  }
+  if (videoModal) {
+    videoModal.addEventListener('click', (event) => {
+      if (event.target === videoModal.querySelector(".video-modal-backdrop")) {
+        closeVideoPlayer();
+      }
+    });
+  }
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && videoModal && !videoModal.hidden) {
+      closeVideoPlayer();
+    }
   });
 
   window.addEventListener("beforeunload", () => {

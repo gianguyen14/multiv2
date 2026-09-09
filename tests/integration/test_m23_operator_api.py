@@ -24,6 +24,22 @@ def test_operator_ui_health_search_and_media(tmp_path):
     assert client.get("/api/frames/video/frame_000000001.jpg").content == b"image"
 
 
+def test_video_result_contract_and_player_assets(tmp_path, monkeypatch):
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"video")
+    app = create_app(lambda request: [{
+        "video_id": "video", "frame_id": 1, "timestamp_seconds": 12.5,
+        "video_url": "/api/video/video", "score": 0.9,
+    }], tmp_path)
+    client = TestClient(app)
+    result = client.post("/api/search", json={"query": "car", "query_type": "kis"}).json()["results"][0]
+    assert result["video_url"] == "/api/video/video"
+    assert result["timestamp_seconds"] == 12.5
+    app_js = client.get("/scripts/app.js").text
+    assert "currentTime" in app_js
+    assert "loadedmetadata" in app_js
+
+
 def test_operator_page_contains_competition_controls():
     # The refactored frontend splits runtime JS/CSS out of index.html into
     # served assets (/scripts/*.js, /styles/main.css). Assertions that target

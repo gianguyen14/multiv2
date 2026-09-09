@@ -23,6 +23,9 @@ services:
       - MODEL_CACHE_DIR=${MODEL_CACHE_DIR:-/models}
       - SEARCH_BACKEND=${SEARCH_BACKEND:-qwen3_vl}
       - QWEN3_VL_MODEL_DIR=${QWEN3_VL_MODEL_DIR:-}
+      - VIDEO_SOURCE_DIR=${VIDEO_SOURCE_DIR:-}
+      - VIDEO_SOURCE_URL_TEMPLATE=${VIDEO_SOURCE_URL_TEMPLATE:-}
+      - VIDEO_CACHE_DIR=${VIDEO_CACHE_DIR:-/cache/videos}
       - HF_HOME=/cache/huggingface
       - TRANSFORMERS_CACHE=/cache/huggingface
       - TORCH_HOME=/cache/torch
@@ -32,6 +35,9 @@ services:
       - ${AIC_MODELS_DIR:-./models}:/models:rw
       - ${AIC_CACHE_DIR:-./cache}:/cache:rw
       - ${AIC_LOGS_DIR:-./logs}:/logs:rw
+      # Optional local raw-video source. Set VIDEO_SOURCE_DIR_HOST and
+      # VIDEO_SOURCE_DIR=/videos in .env to enable local playback in Docker.
+      - ${VIDEO_SOURCE_DIR_HOST:-./data/videos}:${VIDEO_SOURCE_DIR_CONTAINER:-/videos}:ro
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live')\""]
       interval: 30s

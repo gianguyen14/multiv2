@@ -25,6 +25,7 @@ from backend.app.services.query_refiner import (
 from backend.app.video.frame_index import load_current_frame_index
 from backend.app.video.m16_text_pipeline import TextEvidenceStore
 from backend.app.video.text_evidence import normalize_text
+from backend.app.services.video_source import video_url_for
 
 
 def _read_modality_weight(name: str, default: float) -> float:
@@ -89,6 +90,7 @@ class ConfiguredSearch:
         self._encoder = None
         self._ocr = []
         self._asr = []
+        self._timestamps: dict[tuple[str, int], float | None] = {}
         self._query_refiner = None
         self._candidate_reranker = CandidateReranker(enabled=self.enable_rerank)
         self._lock = threading.Lock()
@@ -134,15 +136,25 @@ class ConfiguredSearch:
                 self._guard_index_backend(bundle)
                 encoder = self.encoder_factory()
                 ocr, asr = [], []
+                timestamps = {}
                 store = TextEvidenceStore(self.processed_root)
                 for video_id in bundle.metadata.get("video_ids", []):
                     if self.enable_ocr and store._path(video_id, "ocr.json").is_file():
                         ocr.extend(store.load_ocr(video_id))
                     if self.enable_asr and store._path(video_id, "asr.json").is_file():
                         asr.extend(store.load_asr(video_id))
-                self._bundle, self._encoder, self._ocr, self._asr = bundle, encoder, ocr, asr
+                timestamps = {
+                    (payload["video_id"], int(payload["source_frame_index_zero_based"])):
+                    payload.get("timestamp_seconds")
+                    for payload in bundle.resolver.payloads.values()
+                }
+                self._bundle, self._encoder, self._ocr, self._asr, self._timestamps = (
+                    bundle, encoder, ocr, asr, timestamps
+                )
 
     def status(self):
+        from backend.app.services.video_source import video_url_for
+
         return {"configured": self.configured, "initialized": self._bundle is not None,
             "visual_device": self.device, "visual_device_requested": self.device_selection.requested,
             "visual_device_source": self.device_selection.source,
@@ -153,7 +165,7 @@ class ConfiguredSearch:
                 "trake": True,
                 "image": True,
                 "thumbnails": True,
-                "raw_video_preview": True,
+                "raw_video_preview": bool(video_url_for("status")),
             }}
 
     def readiness(self):
@@ -279,7 +291,8 @@ class ConfiguredSearch:
                 "ocr_score": ocr_s,
                 "asr_score": asr_s,
                 "score": fused,
-                "image_url": f"/api/frames/{vid}/{filename}"
+                "image_url": f"/api/frames/{vid}/{filename}",
+                "video_url": video_url_for(vid),
             })
 
         raw_sorted = sorted(results, key=lambda item: (-item["score"], item["frame_uid"]))
@@ -526,6 +539,7 @@ class ConfiguredSearch:
                 "matched_by": matched_by,
                 "channels": channels_scores,
                 "image_url": f"/api/frames/{vid}/{filename}",
+                "video_url": video_url_for(vid),
             })
 
         fused_results.sort(
@@ -638,7 +652,8 @@ class ConfiguredSearch:
                 "ocr_score": 0.0,
                 "asr_score": 0.0,
                 "score": v_raw,
-                "image_url": f"/api/frames/{vid}/{filename}"
+                "image_url": f"/api/frames/{vid}/{filename}",
+                "video_url": video_url_for(vid),
             })
 
         raw_sorted = sorted(results, key=lambda item: (-item["score"], item["frame_uid"]))
@@ -847,6 +862,8 @@ class ConfiguredSearch:
                 "frame_id": result.frame_ids[0] if result.frame_ids else None,
                 "events": [{"frame_id": fid} for fid in result.frame_ids],
                 "score": result.score,
+                "video_url": video_url_for(result.video_id) if result.frame_ids else None,
+                "timestamp_seconds": self._timestamps.get((result.video_id, int(result.frame_ids[0]))) if result.frame_ids else None,
                 "image_url": f"/api/frames/{result.video_id}/{str(result.frame_ids[0]).zfill(9)}.jpg" if result.frame_ids else None,
                 "refinement_used": metrics.get("refinement_used", False),
                 "refinement_regions": metrics.get("regions_refined", 0),

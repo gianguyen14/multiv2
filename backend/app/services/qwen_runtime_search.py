@@ -38,6 +38,7 @@ from backend.app.embeddings.qwen3_vl import (
     weights_available,
 )
 from backend.app.video.frame_index import load_current_frame_index
+from backend.app.services.video_source import video_url_for
 
 VISUAL_FUSION_WEIGHT = 0.70
 OCR_FUSION_WEIGHT = 0.18
@@ -280,6 +281,8 @@ class QwenRuntimeSearch:
                 self._asr_records = self._load_evidence_rows(self._asr_root(), "asr")
 
     def status(self) -> dict[str, Any]:
+        from backend.app.services.video_source import video_url_for
+
         initialized = self._bundle is not None
         return {
             "backend": "qwen3_vl",
@@ -298,7 +301,7 @@ class QwenRuntimeSearch:
                 "trake": True,
                 "image": False,
                 "thumbnails": False,
-                "raw_video_preview": False,
+                "raw_video_preview": bool(video_url_for("status")),
             },
         }
 
@@ -416,6 +419,7 @@ class QwenRuntimeSearch:
                 "asr_score": float(asr_score),
                 "ocr_evidence": ocr_text,
                 "asr_evidence": asr_text,
+                "video_url": video_url_for(payload["video_id"]),
             }
             _attach_video_evidence(row, video_ocr, video_asr, payloads)
             rows.append(row)
@@ -481,19 +485,17 @@ class QwenRuntimeSearch:
             "source_frame_index_zero_based": frame_ids[0],
             "frame_uid": f"{best_video}:{str(frame_ids[0]).zfill(9)}",
             "timestamp_seconds": best_sequence[0].get("timestamp_seconds"),
-            "score": float(sum(row["score"] for row in best_sequence) / len(best_sequence)),
-            "visual_score": float(sum(row["visual_score"] for row in best_sequence) / len(best_sequence)),
-            "ocr_score": float(sum(row["ocr_score"] for row in best_sequence) / len(best_sequence)),
-            "asr_score": float(sum(row["asr_score"] for row in best_sequence) / len(best_sequence)),
+            "score": float(sum(item["score"] for item in best_sequence) / len(best_sequence)),
+            "visual_score": float(sum(item["visual_score"] for item in best_sequence) / len(best_sequence)),
+            "ocr_score": float(sum(item["ocr_score"] for item in best_sequence) / len(best_sequence)),
+            "asr_score": float(sum(item["asr_score"] for item in best_sequence) / len(best_sequence)),
             "events": [{"frame_id": frame_id} for frame_id in frame_ids],
+            "video_url": video_url_for(best_video),
         }
-        # Additive per-video text evidence: pick the strongest OCR/ASR hit across
+        # Additive per-video text evidence: pick strongest OCR/ASR hit across
         # every event row chosen for this video.
         for prefix in ("ocr", "asr"):
-            hit_rows = [
-                r for r in best_sequence
-                if float(r.get(f"video_{prefix}_score") or 0.0) > 0.0
-            ]
+            hit_rows = [r for r in best_sequence if float(r.get(f"video_{prefix}_score") or 0.0) > 0.0]
             if hit_rows:
                 top = max(hit_rows, key=lambda r: float(r[f"video_{prefix}_score"]))
                 row[f"video_{prefix}_score"] = float(top[f"video_{prefix}_score"])
