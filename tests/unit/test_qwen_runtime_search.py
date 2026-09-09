@@ -227,6 +227,27 @@ def test_ocr_evidence_expands_candidates(runtime, tmp_path):
     assert provider._ocr_records[0]["token_string"] == "biển số 50h 12345"
 
 
+def test_video_level_text_evidence_attached_to_every_row(runtime, tmp_path):
+    """Additive video-level OCR/ASR evidence is present even on frames whose
+    own ocr/asr score is 0 (evidence mapped to another frame of the video)."""
+    model_dir = _touch_model(tmp_path / "model")
+    provider = _search(runtime, model_dir, "x")
+    results = provider.handle({"query_type": "kis", "query": "bien so 50h 12345", "top_k": 6})
+    hit = next((row for row in results if row["ocr_score"] > 0.0), None)
+    assert hit is not None
+    assert hit["video_ocr_score"] == hit["ocr_score"]
+    assert hit["ocr_hit_frame_uid"] == hit["frame_uid"]
+    assert hit["ocr_hit_timestamp_seconds"] == hit["timestamp_seconds"]
+    assert hit["video_ocr_evidence"]
+    # Every other row of the same video carries the same video-level evidence.
+    for row in results:
+        if row["video_id"] == hit["video_id"]:
+            assert row["video_ocr_score"] == hit["video_ocr_score"]
+            assert row["ocr_hit_frame_uid"] == hit["ocr_hit_frame_uid"]
+            if row["frame_uid"] != hit["frame_uid"]:
+                assert row["ocr_score"] == 0.0
+
+
 def test_qa_uses_same_pipeline_and_empty_query_rejected(runtime, tmp_path):
     model_dir = _touch_model(tmp_path / "model")
     provider = _search(runtime, model_dir, "x")
