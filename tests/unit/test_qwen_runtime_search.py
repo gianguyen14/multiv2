@@ -276,13 +276,45 @@ def test_qa_attaches_evidence_answer(runtime, tmp_path):
     assert len(answered[0]["answer"]) <= 100
 
 
+@pytest.fixture()
+def image_runtime(runtime, tmp_path, monkeypatch):
+    monkeypatch.setenv("QWEN_IMAGE_INFERENCE", "ready")
+    class ImageStubEncoder(StubEncoder):
+        def encode_image(self, image, dimension):
+            assert image.mode == "RGB"
+            vector = np.zeros((dimension,), dtype=np.float32)
+            vector[0] = 1.0
+            return vector
+    root, _, _ = runtime
+    provider = QwenRuntimeSearch(
+        processed_root=root,
+        model_dir=_touch_model(tmp_path / "model"),
+        encoder_factory=lambda: ImageStubEncoder(4),
+    )
+    return provider
+
+
+def test_image_search_reuses_qwen_index_and_contract(image_runtime):
+    from PIL import Image
+    results = image_runtime.search_image(Image.new("RGB", (8, 8), "red"), top_k=2, deduplicate=False)
+    assert len(results) == 2
+    assert results[0]["frame_uid"] in {_canonical_uid(0), _canonical_uid(4)}
+    assert results[0]["score"] == 1.0
+
+
+def test_image_capability_tracks_encoder_weights(image_runtime):
+    assert image_runtime.status()["capabilities"]["image"] is True
+
+
+def test_image_query_requires_image(image_runtime):
+    with pytest.raises(RuntimeError, match="multipart"):
+        image_runtime.handle({"query_type": "image", "top_k": 2})
+
 def test_image_search_explicit_error(runtime, tmp_path):
     model_dir = _touch_model(tmp_path / "model")
     provider = _search(runtime, model_dir, "x")
-    with pytest.raises(RuntimeError, match="image search is not supported"):
+    with pytest.raises(RuntimeError, match="GPU validation is pending"):
         provider.search_image(object(), top_k=5)
-    with pytest.raises(RuntimeError, match="image search is not supported"):
-        provider.handle({"query_type": "image", "query": "x", "top_k": 5})
 
 
 def test_capabilities_reported(runtime, tmp_path):
@@ -291,7 +323,7 @@ def test_capabilities_reported(runtime, tmp_path):
     caps = provider.status()["capabilities"]
     assert caps == {
         "kis": True, "qa": True, "trake": True, "image": False,
-        "thumbnails": False, "raw_video_preview": False,
+        "image_experimental": True, "thumbnails": False, "raw_video_preview": False,
     }
 
 

@@ -65,7 +65,11 @@ def validate_generation(path, expected_generation_id=None):
         raise ValueError("invalid index generation metadata")
     if expected_generation_id is not None and path.name != expected_generation_id:
         raise ValueError("index generation identity mismatch")
-    for name, digest in metadata.get("artifact_sha256", {}).items():
+    hashes_path = path / "artifact_sha256.json"
+    artifact_hashes = metadata.get("artifact_sha256")
+    if artifact_hashes is None and hashes_path.is_file():
+        artifact_hashes = json.loads(hashes_path.read_text())
+    for name, digest in (artifact_hashes or {}).items():
         if _sha256(path / name) != digest:
             raise ValueError("index generation artifact checksum mismatch")
     index = FaissSigLIPIndex.load(path / "frames.faiss", path / "mapping.json")

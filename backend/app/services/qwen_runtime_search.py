@@ -39,6 +39,10 @@ from backend.app.embeddings.qwen3_vl import (
 )
 from backend.app.video.frame_index import load_current_frame_index
 
+
+def video_url_for(video_id: str):
+    return f"/api/video/{video_id}" if (os.getenv("VIDEO_SOURCE_DIR") or os.getenv("VIDEO_SOURCE_URL_TEMPLATE")) else None
+
 VISUAL_FUSION_WEIGHT = 0.70
 OCR_FUSION_WEIGHT = 0.18
 ASR_FUSION_WEIGHT = 0.12
@@ -126,14 +130,17 @@ class QwenRuntimeSearch:
         self,
         processed_root=None,
         *,
+        vision_processed_root=None,
         model_dir=None,
         encoder_factory=None,
         instruction: str = DEFAULT_INSTRUCTION,
         enable_ocr: bool = True,
         enable_asr: bool = True,
     ):
-        value = processed_root or os.getenv("VIDEO_PROCESSED_ROOT")
-        self.processed_root = Path(value) if value else None
+        process_value = processed_root or os.getenv("VIDEO_PROCESSED_ROOT")
+        vision_value = vision_processed_root or process_value
+        self.processed_root = Path(process_value) if process_value else None
+        self.vision_processed_root = Path(vision_value) if vision_value else None
         self.model_dir = Path(resolve_model_dir(model_dir))
         self.instruction = instruction
         self.enable_ocr = enable_ocr and os.getenv("SEARCH_ENABLE_OCR", "true").lower() == "true"
@@ -158,12 +165,18 @@ class QwenRuntimeSearch:
         return self.processed_root is not None
 
     def _index_root(self) -> Path:
-        return self.processed_root / "index"
+        if self.vision_processed_root is None:
+            raise RuntimeError("vision processed root is not configured")
+        return self.vision_processed_root / "index"
 
     def _ocr_root(self) -> Path:
+        if self.processed_root is None:
+            raise RuntimeError("text evidence root is not configured")
         return self.processed_root / "ocr"
 
     def _asr_root(self) -> Path:
+        if self.processed_root is None:
+            raise RuntimeError("text evidence root is not configured")
         return self.processed_root / "asr"
 
     def _load_evidence_rows(self, root: Path, kind: str) -> list[dict[str, Any]]:
@@ -215,7 +228,7 @@ class QwenRuntimeSearch:
     def _initialize(self) -> None:
         if self._bundle is not None:
             return
-        if not self.configured:
+        if self.processed_root is None:
             raise RuntimeError("VIDEO_PROCESSED_ROOT is not configured")
         with self._lock:
             if self._bundle is not None:
@@ -241,24 +254,30 @@ class QwenRuntimeSearch:
 
     def status(self) -> dict[str, Any]:
         initialized = self._bundle is not None
+        image_inference = (os.getenv("QWEN_IMAGE_INFERENCE", "auto").strip().lower())
+        image_ready = image_inference == "ready"
+        image_experimental = image_inference in {"auto", "experimental"}
         return {
             "backend": "qwen3_vl",
             "configured": self.configured,
             "initialized": initialized,
             "processed_root": str(self.processed_root) if self.processed_root else None,
+            "vision_processed_root": str(self.vision_processed_root) if self.vision_processed_root else None,
             "model_dir": str(self.model_dir),
             "generation_id": self._generation_id if initialized else None,
             "dimension": self._dimension if initialized else None,
             "ocr_records": len(self._ocr_records) if initialized else 0,
             "asr_records": len(self._asr_records) if initialized else 0,
             "weights_present": weights_available(self.model_dir),
+            "image_inference": image_inference,
             "capabilities": {
                 "kis": True,
                 "qa": True,
                 "trake": True,
-                "image": False,
+                "image": image_ready,
+                "image_experimental": image_experimental,
                 "thumbnails": False,
-                "raw_video_preview": False,
+                "raw_video_preview": bool(video_url_for("status")),
             },
         }
 
@@ -439,6 +458,71 @@ class QwenRuntimeSearch:
             "events": [{"frame_id": frame_id} for frame_id in frame_ids],
         }]
 
+    def _search_visual_vector(self, vector, top_k: int, deduplicate: bool = True) -> list[dict[str, Any]]:
+        self._initialize()
+        bundle = self._bundle
+        assert bundle is not None
+        recall_k = min(max(int(top_k) * 2, 200), int(bundle.index.index.ntotal))
+        hits = bundle.index.search(vector, recall_k)
+        rows = []
+        for hit in hits:
+            uid = str(hit["frame_id"])
+            payload = bundle.resolver.payloads.get(uid)
+            if payload is None:
+                continue
+            rows.append({
+                "video_id": payload["video_id"],
+                "frame_id": int(payload.get("submission_frame_id", payload["source_frame_index_zero_based"])),
+                "source_frame_index_zero_based": int(payload["source_frame_index_zero_based"]),
+                "frame_uid": uid,
+                "timestamp_seconds": payload.get("timestamp_seconds"),
+                "score": float(hit["score"]),
+                "visual_score": float(hit["score"]),
+                "ocr_score": 0.0,
+                "asr_score": 0.0,
+                "rank": len(rows) + 1,
+                "video_url": video_url_for(payload["video_id"]),
+            })
+        if not deduplicate:
+            return rows[: int(top_k)]
+        selected = []
+        by_video: dict[str, list[int]] = {}
+        for row in rows:
+            frames = by_video.setdefault(row["video_id"], [])
+            if any(abs(row["source_frame_index_zero_based"] - prior) < 30 for prior in frames):
+                continue
+            selected.append(row)
+            frames.append(row["source_frame_index_zero_based"])
+            if len(selected) >= int(top_k):
+                break
+        for rank, row in enumerate(selected, 1):
+            row["rank"] = rank
+        return selected
+
+    def _search_image(self, image_or_path, top_k: int = 100, deduplicate: bool = True) -> list[dict[str, Any]]:
+        """Search the packed Qwen vision index with the official image pathway."""
+        from PIL import Image
+        if not self.status()["capabilities"]["image"]:
+            raise RuntimeError("Qwen image search is unavailable: GPU validation is pending; set QWEN_IMAGE_INFERENCE=ready after validation")
+        self._initialize()
+        if self._encoder is None or not hasattr(self._encoder, "encode_image"):
+            raise RuntimeError("Qwen image encoder is not available")
+        dimension = self._dimension
+        if dimension is None:
+            raise RuntimeError("Qwen index dimension is unavailable")
+        if isinstance(image_or_path, (str, Path)):
+            with Image.open(image_or_path) as opened:
+                image = opened.convert("RGB")
+        elif isinstance(image_or_path, Image.Image):
+            image = image_or_path.convert("RGB")
+        else:
+            raise ValueError(f"Unsupported image input type: {type(image_or_path).__name__}")
+        try:
+            vector = self._encoder.encode_image(image, dimension)
+            return self._search_visual_vector(vector, top_k, deduplicate)
+        finally:
+            image.close()
+
     def handle(self, request: dict[str, Any]) -> list[dict[str, Any]]:
         """Serves ``POST /api/search`` request payloads with explicit capability errors."""
         query_type = request.get("query_type", "kis")
@@ -460,8 +544,8 @@ class QwenRuntimeSearch:
                     row["answer"] = self._qa_answer(row)
         elif query_type == "image":
             raise RuntimeError(
-                "image search is not supported by the qwen3_vl backend; "
-                "the packed DB is a text-query frame index"
+                "image query payloads are not accepted on /api/search; "
+                "use multipart POST /api/search/image"
             )
         else:
             raise ValueError(f"unsupported query_type: {query_type}")
@@ -474,8 +558,5 @@ class QwenRuntimeSearch:
         return results
 
     def search_image(self, image_or_path, top_k=100, deduplicate=True):
-        """Image queries are outside the verified text runtime contract."""
-        raise RuntimeError(
-            "image search is not supported by the qwen3_vl backend; "
-            "the packed DB is a text-query frame index"
-        )
+        """Compatibility alias for the official Qwen image pathway."""
+        return self._search_image(image_or_path, top_k=top_k, deduplicate=deduplicate)
