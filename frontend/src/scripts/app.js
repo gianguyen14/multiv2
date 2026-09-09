@@ -542,6 +542,20 @@
       meta.append(scoreList);
     }
 
+    const videoEvidence = [];
+    [["video_ocr_score", "ocr_hit_frame_uid", "OCR (video)"],
+     ["video_asr_score", "asr_hit_frame_uid", "ASR (video)"]].forEach(([scoreField, uidField, label]) => {
+      if (hasOwn(item, scoreField) && item[scoreField] > 0
+          && hasOwn(item, uidField) && item[uidField] && item[uidField] !== item.frame_uid) {
+        const uid = String(item[uidField]);
+        const frame = uid.includes(":") ? uid.split(":")[1] : uid;
+        videoEvidence.push(`${label} ${formatNumber(item[scoreField], 3)} @ frame ${frame}`);
+      }
+    });
+    if (videoEvidence.length) {
+      appendOptionalBlock(meta, "Text evidence in this video", videoEvidence.join(" · "));
+    }
+
     if (mode === "trake" && Array.isArray(item.frame_ids)) {
       appendOptionalBlock(meta, "TRAKE frames", item.frame_ids.join(" → "));
     }
