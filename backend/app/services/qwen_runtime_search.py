@@ -119,6 +119,46 @@ def nearest_uid(timeline, video_id: str, timestamp: float) -> Optional[str]:
     return min(options, key=lambda item: abs(item[0] - float(timestamp)))[1]
 
 
+def _best_text_evidence(
+    hits: list[tuple[str, tuple[float, str]]],
+    payloads: Mapping[str, dict[str, Any]],
+) -> dict[str, tuple[float, str, str]]:
+    """Best per-video (score, raw_text, hit_frame_uid) from uid-keyed text hits."""
+    best: dict[str, tuple[float, str, str]] = {}
+    for uid, (score, text) in hits:
+        payload = payloads.get(uid)
+        if payload is None:
+            continue
+        video_id = str(payload.get("video_id", ""))
+        if video_id not in best or score > best[video_id][0]:
+            best[video_id] = (float(score), text, uid)
+    return best
+
+
+def _attach_video_evidence(
+    row: dict[str, Any],
+    video_ocr: dict[str, tuple[float, str, str]],
+    video_asr: dict[str, tuple[float, str, str]],
+    payloads: Mapping[str, dict[str, Any]],
+) -> None:
+    """Attach additive per-video evidence fields to a result row."""
+    video_id = str(row.get("video_id", ""))
+    for prefix, best in (("ocr", video_ocr), ("asr", video_asr)):
+        entry = best.get(video_id)
+        if entry is None:
+            row[f"video_{prefix}_score"] = 0.0
+            row[f"{prefix}_hit_frame_uid"] = None
+            row[f"{prefix}_hit_timestamp_seconds"] = None
+            row[f"video_{prefix}_evidence"] = ""
+            continue
+        score, text, uid = entry
+        row[f"video_{prefix}_score"] = float(score)
+        row[f"{prefix}_hit_frame_uid"] = uid
+        payload = payloads.get(uid, {})
+        row[f"{prefix}_hit_timestamp_seconds"] = payload.get("timestamp_seconds")
+        row[f"video_{prefix}_evidence"] = text
+
+
 class QwenRuntimeSearch:
     """Serves text queries against the Qwen3-VL packed DB using runtime semantics."""
 
@@ -346,6 +386,13 @@ class QwenRuntimeSearch:
             )
         )
 
+        # Per-video best text evidence (additive; ranking is unchanged). This
+        # exposes OCR/ASR matches that belong to a video but occur on a frame
+        # other than the one being displayed, so the operator never sees a
+        # bare 0.0 while the video actually contains matching evidence.
+        video_ocr = _best_text_evidence(ocr, payloads)
+        video_asr = _best_text_evidence(asr, payloads)
+
         rows = []
         for uid in all_uids:
             payload = payloads[uid]
@@ -357,7 +404,7 @@ class QwenRuntimeSearch:
                 + ASR_FUSION_WEIGHT * asr_score
             )
             source_index = int(payload["source_frame_index_zero_based"])
-            rows.append({
+            row = {
                 "video_id": payload["video_id"],
                 "frame_id": int(payload.get("submission_frame_id", source_index)),
                 "source_frame_index_zero_based": source_index,
@@ -369,7 +416,9 @@ class QwenRuntimeSearch:
                 "asr_score": float(asr_score),
                 "ocr_evidence": ocr_text,
                 "asr_evidence": asr_text,
-            })
+            }
+            _attach_video_evidence(row, video_ocr, video_asr, payloads)
+            rows.append(row)
         rows.sort(key=lambda row: (-row["score"], row["video_id"], row["frame_id"]))
         rows = rows[: int(top_k)]
         for rank, row in enumerate(rows, 1):
@@ -425,7 +474,7 @@ class QwenRuntimeSearch:
             )
 
         frame_ids = [int(row["source_frame_index_zero_based"]) for row in best_sequence]
-        return [{
+        row = {
             "video_id": best_video,
             "frame_id": frame_ids[0],
             "frame_ids": frame_ids,
@@ -437,7 +486,26 @@ class QwenRuntimeSearch:
             "ocr_score": float(sum(row["ocr_score"] for row in best_sequence) / len(best_sequence)),
             "asr_score": float(sum(row["asr_score"] for row in best_sequence) / len(best_sequence)),
             "events": [{"frame_id": frame_id} for frame_id in frame_ids],
-        }]
+        }
+        # Additive per-video text evidence: pick the strongest OCR/ASR hit across
+        # every event row chosen for this video.
+        for prefix in ("ocr", "asr"):
+            hit_rows = [
+                r for r in best_sequence
+                if float(r.get(f"video_{prefix}_score") or 0.0) > 0.0
+            ]
+            if hit_rows:
+                top = max(hit_rows, key=lambda r: float(r[f"video_{prefix}_score"]))
+                row[f"video_{prefix}_score"] = float(top[f"video_{prefix}_score"])
+                row[f"{prefix}_hit_frame_uid"] = top.get(f"{prefix}_hit_frame_uid")
+                row[f"{prefix}_hit_timestamp_seconds"] = top.get(f"{prefix}_hit_timestamp_seconds")
+                row[f"video_{prefix}_evidence"] = top.get(f"video_{prefix}_evidence", "")
+            else:
+                row[f"video_{prefix}_score"] = 0.0
+                row[f"{prefix}_hit_frame_uid"] = None
+                row[f"{prefix}_hit_timestamp_seconds"] = None
+                row[f"video_{prefix}_evidence"] = ""
+        return [row]
 
     def handle(self, request: dict[str, Any]) -> list[dict[str, Any]]:
         """Serves ``POST /api/search`` request payloads with explicit capability errors."""
