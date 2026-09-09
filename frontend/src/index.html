@@ -127,6 +127,17 @@
     </main>
   </div>
 
+  <div id="video-modal" class="video-modal" hidden>
+    <div class="video-modal-backdrop"></div>
+    <div class="video-modal-panel" role="dialog" aria-modal="true" aria-label="Video preview">
+      <div class="video-modal-header">
+        <span id="video-modal-title" class="video-modal-title">Video</span>
+        <button id="video-modal-close" class="icon-button" type="button" aria-label="Close video">×</button>
+      </div>
+      <video id="video-player" class="video-player" controls preload="metadata"></video>
+    </div>
+  </div>
+
   <script src="/scripts/api.js" defer></script>
   <script src="/scripts/shortcuts.js" defer></script>
   <script src="/scripts/app.js" defer></script>

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field, field_validator
 
@@ -17,6 +17,19 @@ logger = logging.getLogger(__name__)
 
 MAX_IMAGE_UPLOAD_BYTES = 15 * 1024 * 1024
 SUPPORTED_IMAGE_FORMATS = {"JPEG", "PNG", "WEBP"}
+
+
+def _iter_file_range(path: Path, start: int, end: int, chunk_size: int = 1024 * 1024):
+    """Yield an inclusive byte range without loading a video into memory."""
+    remaining = end - start + 1
+    with path.open("rb") as stream:
+        stream.seek(start)
+        while remaining:
+            chunk = stream.read(min(chunk_size, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk
 
 
 def _debug_api_errors_enabled() -> bool:
@@ -240,6 +253,18 @@ def create_app(search_handler=None, media_root=None, configured_search=None):
         allow_headers=["*"],
     )
 
+    def _iter_file_range(path: Path, start: int, end: int, chunk_size: int = 1024 * 1024):
+        """Yield an inclusive byte range without loading a video into memory."""
+        remaining = end - start + 1
+        with path.open("rb") as stream:
+            stream.seek(start)
+            while remaining:
+                chunk = stream.read(min(chunk_size, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+                yield chunk
+
     @app.get("/api/frames/{video_id}/{filename}")
     def frame(video_id: str, filename: str):
         if Path(filename).suffix.lower() not in {".jpg", ".webp", ".png"} or "/" in filename or "\\" in filename:
@@ -250,6 +275,65 @@ def create_app(search_handler=None, media_root=None, configured_search=None):
                 or not path.is_file()):
             raise HTTPException(404, "frame not found")
         return FileResponse(path, headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.api_route("/api/video/{video_id}", methods=["GET", "HEAD"])
+    def video(video_id: str, request: Request):
+        """Serve a raw video with HTTP Range support, downloading lazily."""
+        from backend.app.services.video_source import resolve_video_path
+
+        try:
+            path = resolve_video_path(video_id)
+        except ValueError:
+            raise HTTPException(404, "video not found")
+        except FileNotFoundError as exc:
+            raise HTTPException(404, str(exc))
+        except (OSError, RuntimeError) as exc:
+            logger.exception("video source error")
+            raise HTTPException(503, f"video source error: {exc}")
+
+        size = path.stat().st_size
+        range_header = request.headers.get("range")
+        headers = {
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=86400",
+        }
+        if not range_header:
+            headers["Content-Length"] = str(size)
+            return FileResponse(path, media_type="video/mp4", headers=headers)
+
+        headers["Content-Range"] = f"bytes */{size}"
+        if not range_header.startswith("bytes=") or "," in range_header:
+            raise HTTPException(416, "only one byte range is supported", headers=headers)
+        spec = range_header[6:].strip()
+        try:
+            start_text, end_text = spec.split("-", 1)
+            if start_text:
+                start = int(start_text)
+                end = int(end_text) if end_text else size - 1
+            else:
+                suffix_length = int(end_text)
+                if suffix_length <= 0:
+                    raise ValueError
+                start = max(size - suffix_length, 0)
+                end = size - 1
+            if start < 0 or start >= size or end < start:
+                raise ValueError
+            end = min(end, size - 1)
+        except (ValueError, TypeError):
+            headers["Content-Range"] = f"bytes */{size}"
+            raise HTTPException(416, "invalid byte range", headers=headers)
+
+        length = end - start + 1
+        headers.update({
+            "Content-Length": str(length),
+            "Content-Range": f"bytes {start}-{end}/{size}",
+        })
+        return StreamingResponse(
+            _iter_file_range(path, start, end),
+            status_code=206,
+            media_type="video/mp4",
+            headers=headers,
+        )
 
     return app
 

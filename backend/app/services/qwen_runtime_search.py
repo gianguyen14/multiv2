@@ -38,6 +38,7 @@ from backend.app.embeddings.qwen3_vl import (
     weights_available,
 )
 from backend.app.video.frame_index import load_current_frame_index
+from backend.app.services.video_source import video_url_for
 
 VISUAL_FUSION_WEIGHT = 0.70
 OCR_FUSION_WEIGHT = 0.18
@@ -240,6 +241,8 @@ class QwenRuntimeSearch:
                 self._asr_records = self._load_evidence_rows(self._asr_root(), "asr")
 
     def status(self) -> dict[str, Any]:
+        from backend.app.services.video_source import video_url_for
+
         initialized = self._bundle is not None
         return {
             "backend": "qwen3_vl",
@@ -258,7 +261,7 @@ class QwenRuntimeSearch:
                 "trake": True,
                 "image": False,
                 "thumbnails": False,
-                "raw_video_preview": False,
+                "raw_video_preview": bool(video_url_for("status")),
             },
         }
 
@@ -369,6 +372,7 @@ class QwenRuntimeSearch:
                 "asr_score": float(asr_score),
                 "ocr_evidence": ocr_text,
                 "asr_evidence": asr_text,
+                "video_url": video_url_for(payload["video_id"]),
             })
         rows.sort(key=lambda row: (-row["score"], row["video_id"], row["frame_id"]))
         rows = rows[: int(top_k)]
@@ -437,6 +441,7 @@ class QwenRuntimeSearch:
             "ocr_score": float(sum(row["ocr_score"] for row in best_sequence) / len(best_sequence)),
             "asr_score": float(sum(row["asr_score"] for row in best_sequence) / len(best_sequence)),
             "events": [{"frame_id": frame_id} for frame_id in frame_ids],
+            "video_url": video_url_for(best_video),
         }]
 
     def handle(self, request: dict[str, Any]) -> list[dict[str, Any]]:

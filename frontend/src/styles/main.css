@@ -804,3 +804,46 @@ kbd {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Video preview modal */
+.video-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.video-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 10, 16, 0.82);
+}
+.video-modal-panel {
+  position: relative;
+  width: min(920px, 94vw);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.video-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.video-modal-title {
+  font-weight: 600;
+  color: var(--text);
+}
+.video-player {
+  display: block;
+  width: 100%;
+  max-height: 72vh;
+  background: #000;
+}

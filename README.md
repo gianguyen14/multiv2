@@ -252,12 +252,32 @@ QWEN3_VL_MODEL_DIR=/models/Qwen3-VL-Embedding-2B
 ```
 
 Capabilities: KIS, QA (evidence-based answers from OCR/ASR), and TRAKE
-(one-video, increasing-frame sequences) text queries. Image search, frame
-thumbnails, and raw-video preview are **not** available in qwen3_vl mode
-(the packed DB has no JPEGs); the API reports explicit capability errors and
-the frontend degrades gracefully (placeholder frames). Raw video is only ever
-touched by lazy, explicit preview/refine operations and is never downloaded in
-the default path. `SEARCH_ENCODER` is accepted as a legacy alias for
+(one-video, increasing-frame sequences) text queries. Image search and frame
+thumbnails depend on the active backend/data. The packed DB has no JPEGs, so
+missing thumbnails degrade to placeholders. Raw video preview is available
+when a source is configured below; it is never downloaded in the default path.
+
+### Optional raw-video preview
+
+Results include `video_url` and `timestamp_seconds`. When the operator clicks
+**Play video**, FastAPI serves the matching MP4 with byte-range seeking and the
+frontend seeks to that result timestamp after metadata loads. Configure one
+source (no ingestion or DB rewrite):
+
+```bash
+# Local files, served in place:
+VIDEO_SOURCE_DIR=/path/to/videos
+# Or lazy-download by video ID on first click:
+VIDEO_SOURCE_URL_TEMPLATE=https://host/videos/{video_id}.mp4
+# Cache for lazy downloads:
+VIDEO_CACHE_DIR=/path/to/cache/videos
+```
+
+The API rejects unsafe video IDs, downloads atomically, and enforces a 2 GiB
+per-file remote download limit. With no source configured, search still works
+but the Play button is omitted.
+
+`SEARCH_ENCODER` is accepted as a legacy alias for
 `SEARCH_BACKEND`.
 
 Linux / WSL2:
