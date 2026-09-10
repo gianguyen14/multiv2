@@ -39,7 +39,7 @@ from backend.app.embeddings.qwen3_vl import (
 )
 from backend.app.video.frame_index import load_current_frame_index
 from backend.app.services.video_source import video_url_for
-from backend.app.services.qa_answer_synthesizer import QAAnswerSynthesizer
+from backend.app.services.qa_answer_synthesizer import QAAnswerResult, QAAnswerSynthesizer
 
 VISUAL_FUSION_WEIGHT = 0.70
 OCR_FUSION_WEIGHT = 0.18
@@ -534,7 +534,8 @@ class QwenRuntimeSearch:
                 raise ValueError("query is required")
             results = self.search_single(query, top_k=top_k)
             if query_type == "qa":
-                for row in results:
+                remote_limit = self.answer_synthesizer.remote_top_n
+                for rank, row in enumerate(results, 1):
                     fallback = self._qa_answer(row)
                     evidence = []
                     for key, label in (("ocr_evidence", "ocr"), ("asr_evidence", "asr"),
@@ -542,7 +543,12 @@ class QwenRuntimeSearch:
                         text = str(row.get(key) or "").strip()
                         if text:
                             evidence.append({"id": label, "text": text})
-                    synthesis = self.answer_synthesizer.synthesize(query, evidence, fallback=fallback)
+                    if rank <= remote_limit:
+                        synthesis = self.answer_synthesizer.synthesize(query, evidence, fallback=fallback)
+                    else:
+                        # Hard budget: rows beyond QA_ANSWER_REMOTE_TOP_N stay
+                        # deterministically extractive; no remote request is made.
+                        synthesis = QAAnswerResult(fallback, "extractive", "none", "disabled")
                     row["answer"] = synthesis.answer
                     row["answer_backend"] = synthesis.backend
                     row["answer_model"] = synthesis.model

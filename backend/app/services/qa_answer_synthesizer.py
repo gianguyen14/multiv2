@@ -21,11 +21,14 @@ from backend.app.core.config import (
     QA_ANSWER_BACKEND,
     QA_ANSWER_MAX_EVIDENCE_CHARS,
     QA_ANSWER_MODEL,
+    QA_ANSWER_REMOTE_TOP_N,
     QA_ANSWER_TIMEOUT_SECONDS,
     QA_ANSWER_URL,
 )
 
 _ABSTAIN = "Không đủ bằng chứng."
+_REMOTE_TOP_N_MIN = 1
+_REMOTE_TOP_N_MAX = 10
 
 
 @dataclass(frozen=True)
@@ -48,6 +51,7 @@ class QAAnswerSynthesizer:
         api_key: str | None = None,
         timeout_seconds: float | None = None,
         max_evidence_chars: int | None = None,
+        remote_top_n: int | None = None,
         opener=urllib.request.urlopen,
     ):
         self.backend = (backend if backend is not None else QA_ANSWER_BACKEND).strip().lower()
@@ -62,7 +66,13 @@ class QAAnswerSynthesizer:
             500,
             int(max_evidence_chars if max_evidence_chars is not None else QA_ANSWER_MAX_EVIDENCE_CHARS),
         )
+        raw_top_n = int(remote_top_n if remote_top_n is not None else QA_ANSWER_REMOTE_TOP_N)
+        self.remote_top_n = min(_REMOTE_TOP_N_MAX, max(_REMOTE_TOP_N_MIN, raw_top_n))
         self._opener = opener
+        # Number of actual remote chat-completion requests performed since the
+        # synthesizer was constructed (observability; hard budget is enforced
+        # by the caller against remote_top_n).
+        self.remote_calls = 0
 
     @classmethod
     def from_env(cls) -> "QAAnswerSynthesizer":
@@ -90,9 +100,12 @@ class QAAnswerSynthesizer:
             answer = self._request(question, snippets)
         except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
             return QAAnswerResult(fallback, "extractive", "none", "remote_error_fallback")
-        if not answer or answer == _ABSTAIN:
-            return QAAnswerResult(fallback if not answer else _ABSTAIN, "extractive", "none",
-                                  "empty_remote_fallback")
+        if not answer:
+            return QAAnswerResult(fallback, "extractive", "none", "empty_remote_fallback")
+        if answer == _ABSTAIN:
+            # A successful remote abstention is real remote inference output:
+            # preserve the answer and provenance (no extractive relabeling).
+            return QAAnswerResult(_ABSTAIN, "remote_llm", self.model, "abstained")
         return QAAnswerResult(answer, "remote_llm", self.model, "ok")
 
     def _prepare_evidence(self, evidence: list[dict[str, Any]]) -> list[dict[str, str]]:
@@ -147,6 +160,7 @@ class QAAnswerSynthesizer:
         )
         with self._opener(request, timeout=self.timeout_seconds) as response:
             raw = response.read(128 * 1024)
+        self.remote_calls += 1
         data = json.loads(raw.decode("utf-8"))
         content = data["choices"][0]["message"]["content"]
         if not isinstance(content, str):

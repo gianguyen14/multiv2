@@ -35,6 +35,7 @@ QA_ANSWER_MODEL = os.getenv("QA_ANSWER_MODEL", "agent-lite")
 QA_ANSWER_API_KEY = os.getenv("QA_ANSWER_API_KEY", "")
 QA_ANSWER_TIMEOUT_SECONDS = float(os.getenv("QA_ANSWER_TIMEOUT_SECONDS", "8"))
 QA_ANSWER_MAX_EVIDENCE_CHARS = int(os.getenv("QA_ANSWER_MAX_EVIDENCE_CHARS", "12000"))
+QA_ANSWER_REMOTE_TOP_N = min(10, max(1, int(os.getenv("QA_ANSWER_REMOTE_TOP_N", "5"))))
 
 # QA context window (ms)
 QA_CONTEXT_BEFORE_MS = 5000
