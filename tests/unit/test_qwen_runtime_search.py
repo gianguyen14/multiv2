@@ -297,6 +297,131 @@ def test_qa_attaches_evidence_answer(runtime, tmp_path):
     assert len(answered[0]["answer"]) <= 100
 
 
+def test_qa_remote_budget_caps_calls_and_keeps_rest_extractive(runtime, tmp_path):
+    import json as _json
+
+    from backend.app.services.qa_answer_synthesizer import QAAnswerSynthesizer
+
+    root, _, _ = runtime
+    # One OCR row per indexed frame timestamp so every Top-K row carries
+    # evidence and would trigger a remote call without a budget.
+    ocr = [
+        {
+            "video_id": VIDEO,
+            "timestamp_seconds": float(i * 10),
+            "raw_text": "bien so 50H 12345",
+            "normalized_text": "biển số 50h 12345",
+        }
+        for i in range(6)
+    ]
+    (root / "ocr" / f"{VIDEO}.json").write_text(_json.dumps(ocr), encoding="utf-8")
+
+    model_dir = _touch_model(tmp_path / "model")
+    calls = {"n": 0}
+
+    class Resp:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+
+        def read(self, limit):
+            return _json.dumps({"choices": [{"message": {"content": "câu trả lời"}}]}).encode()
+
+    def opener(request, timeout):
+        calls["n"] += 1
+        return Resp()
+
+    synth = QAAnswerSynthesizer(
+        backend="remote_llm", base_url="http://nas/v1", api_key="k",
+        remote_top_n=5, opener=opener,
+    )
+    provider = _search(runtime, model_dir, "x")
+    provider.answer_synthesizer = synth
+    results = provider.handle({"query_type": "qa", "query": "50h 12345", "top_k": 6})
+
+    assert len(results) == 6
+    # Hard budget: at most QA_ANSWER_REMOTE_TOP_N remote calls per query.
+    assert calls["n"] == 5
+    assert synth.remote_calls == 5
+    for row in results[:5]:
+        assert row["answer_backend"] == "remote_llm"
+        assert row["answer_status"] == "ok"
+    # Rows beyond the budget stay deterministically extractive.
+    assert results[5]["answer_backend"] == "extractive"
+    assert results[5]["answer_status"] == "disabled"
+
+
+def test_qa_remote_does_not_change_retrieval_ordering_or_scores(runtime, tmp_path):
+    import json as _json
+
+    from backend.app.services.qa_answer_synthesizer import QAAnswerSynthesizer
+
+    model_dir = _touch_model(tmp_path / "model")
+    calls = {"n": 0}
+
+    class Resp:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+
+        def read(self, limit):
+            return _json.dumps({"choices": [{"message": {"content": "câu trả lời"}}]}).encode()
+
+    def opener(request, timeout):
+        calls["n"] += 1
+        return Resp()
+
+    def provider_with_remote():
+        provider = _search(runtime, model_dir, "x")
+        provider.answer_synthesizer = QAAnswerSynthesizer(
+            backend="remote_llm", base_url="http://nas/v1", api_key="k",
+            remote_top_n=10, opener=opener,
+        )
+        return provider
+
+    qa_results = provider_with_remote().handle(
+        {"query_type": "qa", "query": "bien so 50h 12345", "top_k": 6}
+    )
+    kis_results = provider_with_remote().handle(
+        {"query_type": "kis", "query": "bien so 50h 12345", "top_k": 6}
+    )
+    assert calls["n"] >= 1  # remote synthesis actually ran for the QA pass
+    assert len(qa_results) == len(kis_results)
+    for qa_row, kis_row in zip(qa_results, kis_results):
+        assert qa_row["frame_uid"] == kis_row["frame_uid"]
+        assert qa_row["score"] == kis_row["score"]
+        assert qa_row["visual_score"] == kis_row["visual_score"]
+        assert qa_row["ocr_score"] == kis_row["ocr_score"]
+        assert qa_row["asr_score"] == kis_row["asr_score"]
+
+
+def test_qa_remote_abstention_keeps_remote_provenance(runtime, tmp_path):
+    import json as _json
+
+    from backend.app.services.qa_answer_synthesizer import QAAnswerSynthesizer
+
+    model_dir = _touch_model(tmp_path / "model")
+
+    class Resp:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+
+        def read(self, limit):
+            return _json.dumps({"choices": [{"message": {"content": "Không đủ bằng chứng."}}]}).encode()
+
+    def opener(request, timeout):
+        return Resp()
+
+    synth = QAAnswerSynthesizer(
+        backend="remote_llm", base_url="http://nas/v1", api_key="k",
+        remote_top_n=1, opener=opener,
+    )
+    provider = _search(runtime, model_dir, "x")
+    provider.answer_synthesizer = synth
+    results = provider.handle({"query_type": "qa", "query": "bien so 50h 12345", "top_k": 2})
+    assert results[0]["answer"] == "Không đủ bằng chứng."
+    assert results[0]["answer_backend"] == "remote_llm"
+    assert results[0]["answer_status"] == "abstained"
+
+
 def test_image_search_explicit_error(runtime, tmp_path):
     model_dir = _touch_model(tmp_path / "model")
     provider = _search(runtime, model_dir, "x")

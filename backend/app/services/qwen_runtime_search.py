@@ -39,6 +39,7 @@ from backend.app.embeddings.qwen3_vl import (
 )
 from backend.app.video.frame_index import load_current_frame_index
 from backend.app.services.video_source import video_url_for
+from backend.app.services.qa_answer_synthesizer import QAAnswerResult, QAAnswerSynthesizer
 
 VISUAL_FUSION_WEIGHT = 0.70
 OCR_FUSION_WEIGHT = 0.18
@@ -177,6 +178,7 @@ class QwenRuntimeSearch:
         self.processed_root = Path(value) if value else None
         self.model_dir = Path(resolve_model_dir(model_dir))
         self.instruction = instruction
+        self.answer_synthesizer = QAAnswerSynthesizer.from_env()
         self.enable_ocr = enable_ocr and os.getenv("SEARCH_ENABLE_OCR", "true").lower() == "true"
         self.enable_asr = enable_asr and os.getenv("SEARCH_ENABLE_ASR", "true").lower() == "true"
         self.encoder_factory = encoder_factory or (
@@ -434,7 +436,13 @@ class QwenRuntimeSearch:
         """Answer a Q&A row from its top OCR/ASR evidence (100-char cap)."""
         evidence = (row.get("ocr_evidence") or row.get("asr_evidence") or "").strip()
         if not evidence:
+            row["answer_backend"] = "extractive"
+            row["answer_model"] = "none"
+            row["answer_status"] = "no_evidence"
             return ""
+        row["answer_backend"] = "extractive"
+        row["answer_model"] = "none"
+        row["answer_status"] = "disabled"
         return evidence[:100]
 
     def search_trake(self, events: list[str], top_k: int = 100) -> list[dict[str, Any]]:
@@ -526,8 +534,25 @@ class QwenRuntimeSearch:
                 raise ValueError("query is required")
             results = self.search_single(query, top_k=top_k)
             if query_type == "qa":
-                for row in results:
-                    row["answer"] = self._qa_answer(row)
+                remote_limit = self.answer_synthesizer.remote_top_n
+                for rank, row in enumerate(results, 1):
+                    fallback = self._qa_answer(row)
+                    evidence = []
+                    for key, label in (("ocr_evidence", "ocr"), ("asr_evidence", "asr"),
+                                        ("video_ocr_evidence", "video_ocr"), ("video_asr_evidence", "video_asr")):
+                        text = str(row.get(key) or "").strip()
+                        if text:
+                            evidence.append({"id": label, "text": text})
+                    if rank <= remote_limit:
+                        synthesis = self.answer_synthesizer.synthesize(query, evidence, fallback=fallback)
+                    else:
+                        # Hard budget: rows beyond QA_ANSWER_REMOTE_TOP_N stay
+                        # deterministically extractive; no remote request is made.
+                        synthesis = QAAnswerResult(fallback, "extractive", "none", "disabled")
+                    row["answer"] = synthesis.answer
+                    row["answer_backend"] = synthesis.backend
+                    row["answer_model"] = synthesis.model
+                    row["answer_status"] = synthesis.status
         elif query_type == "image":
             raise RuntimeError(
                 "image search is not supported by the qwen3_vl backend; "
