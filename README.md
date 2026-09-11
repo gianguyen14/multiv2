@@ -4,7 +4,7 @@
 
 ### Local-first multimodal video retrieval
 
-**Text → Frames · Video Q&A · TRAKE · Image Search · OCR · ASR · Temporal Refinement**
+**Text → Frames · Video Q&A · TRAKE · OCR · ASR** (Image Search: experimental branch only)
 
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Recommended-2496ED?logo=docker&logoColor=white)
@@ -25,13 +25,13 @@
 
 | Mode | Input | Output | Main signals |
 |---|---|---|---|
-| 🔎 **Textual KIS** | Natural-language description | Ranked `video_id`, `frame_id` | SigLIP2 + OCR + ASR + fusion |
-| 💬 **Video Q&A** | Question about video content | Evidence frames for answer handling | Visual + OCR + ASR evidence |
-| 🧭 **TRAKE** | Ordered semantic events | One video + ordered keyframes | Coarse retrieval + temporal refinement + DP alignment |
-| 🖼️ **Image Search** | Query image | Visually similar frames | SigLIP2 image embeddings |
-| 🔤 **OCR / ASR** | Frames + audio | Searchable text evidence | Tesseract + Faster Whisper |
+| 🔎 **Textual KIS** | Natural-language description | Ranked `video_id`, `frame_id` | Qwen3-VL visual + OCR + ASR fusion |
+| 💬 **Video Q&A** | Question about video content | Evidence frames + `answer` (extractive or remote LLM) | Visual + OCR + ASR evidence |
+| 🧭 **TRAKE** | Ordered semantic events | One video + ordered keyframes | Single-video monotonic event alignment |
+| 🖼️ **Image Search** | Query image | Visually similar frames | **NOT AVAILABLE ON CURRENT MAIN** (experimental branch) |
+| 🔤 **OCR / ASR** | Frames + audio | Searchable text evidence | Precomputed spool (offline ingestion) |
 
-The retrieval layer supports Vietnamese and English query variants, evidence-aware reranking, temporal deduplication, and an optional local QueryRefiner with deterministic fallback.
+The production search backend is **Qwen3-VL-Embedding-2B** (1024-d). SigLIP2 — the previous default — is **LEGACY** and requires explicit opt-in. Vietnamese and English queries are supported. **Image Search is NOT available on the current `main` backend** — it exists only as an experimental feature branch with a pending GPU validation, not yet merged or enabled.
 
 ---
 
@@ -46,36 +46,38 @@ The retrieval layer supports Vietnamese and English query variants, evidence-awa
                                           │
                                           ▼
                               ┌───────────────────────┐
-                              │   Query Intelligence  │
-                              │ VI/EN · lexical · LLM │
+                              │   Qwen3-VL-Embedding   │
+                              │   encode_query (1024-d)│
                               └───────────┬───────────┘
                                           │
                     ┌─────────────────────┼─────────────────────┐
                     │                     │                     │
                     ▼                     ▼                     ▼
              ┌─────────────┐       ┌─────────────┐       ┌─────────────┐
-             │   SigLIP2   │       │     OCR     │       │     ASR     │
-             │ visual/text │       │  Tesseract  │       │   Whisper   │
+             │   FAISS     │       │     OCR     │       │     ASR     │
+             │ IndexFlatIP │       │  spool JSON │       │  spool JSON │
              └──────┬──────┘       └──────┬──────┘       └──────┬──────┘
                     │                     │                     │
                     └─────────────────────┼─────────────────────┘
                                           ▼
                                 ┌───────────────────┐
                                 │ Candidate Fusion  │
-                                │ RRF + reranking   │
+                                │ 0.70v+0.18o+0.12a │
                                 └─────────┬─────────┘
                                           │
                         ┌─────────────────┼─────────────────┐
                         │                 │                 │
                         ▼                 ▼                 ▼
                       KIS               Q&A              TRAKE
-                                                          │
-                                                          ▼
-                                                Dense TemporalRefiner
-                                                          │
-                                                          ▼
-                                               Ordered DP alignment
+                                          │
+                                     answer synthesis
+                                     (extractive default /
+                                     remote_llm optional)
 ```
+
+> **Production backend:** Qwen3-VL-Embedding-2B over FAISS `IndexFlatIP` (1024-d), read-only against the packed DB. SigLIP2 (`ConfiguredSearch` / RRF / Dense `TemporalRefiner`) is **legacy** and only runs when `SEARCH_BACKEND=siglip2`.
+> **Video Q&A answers** come from OCR/ASR evidence (extractive) or an optional `remote_llm` stage; see `docs/QA_SYNTHESIS.md`.
+> **Image Search** is **NOT available on current `main`** — experimental feature branch only, GPU validation pending.
 
 ### Frame identity is authoritative
 
@@ -87,6 +89,26 @@ for frame_id, frame in enumerate(container.decode(stream)):
 ```
 
 The system does **not** reconstruct authoritative frame IDs using `timestamp × FPS`. This keeps ingestion, retrieval, evaluation, and temporal refinement aligned with the source video.
+
+---
+
+## 📚 Documentation
+
+The `docs/` directory is the authoritative technical reference:
+
+| Topic | Document |
+|---|---|
+| System architecture (Qwen pipeline, DBs, routes) | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| Search-backend capability matrix (Qwen vs SigLIP2) | [`docs/SEARCH_BACKENDS.md`](docs/SEARCH_BACKENDS.md) |
+| DB v1 / DB v2 schema and frame identity | [`docs/DATA_CONTRACT.md`](docs/DATA_CONTRACT.md) |
+| REST API reference (all routes, schemas) | [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md) |
+| Q&A answer synthesis (extractive + remote_llm) | [`docs/QA_SYNTHESIS.md`](docs/QA_SYNTHESIS.md) |
+| Production deployment (Docker, env, run) | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) |
+| Full environment-variable reference | [`docs/RUNTIME_CONFIG.md`](docs/RUNTIME_CONFIG.md) |
+| 5-step quickstart | [`docs/QUICKSTART.md`](docs/QUICKSTART.md) |
+| Architecture Decision Records | [`docs/ADR/`](docs/ADR/) |
+
+Historical milestone logs and freeze reports are archived under [`docs/archive/`](docs/archive/) and preserved in Git history.
 
 ---
 
