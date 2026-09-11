@@ -45,7 +45,7 @@ The system decouples data storage into two primary directories governed by envir
 ### 1.1 Read-Only Runtime Guarantee
 
 The production retrieval runtime operates under an absolute **read-only guarantee**:
-- The application server mounts `$VIDEO_PROCESSED_ROOT` and `$VISION_PROCESSED_ROOT` with read permissions only.
+- The application server mounts `$VIDEO_PROCESSED_ROOT` with read permissions only. (`VISION_PROCESSED_ROOT` is not an environment variable on current `main`; the dense DB v2 layout shown above is used by the experimental image-search branch only.)
 - Ingestion pipelines (`m15_ingestion_pipeline.py`, `m16_text_pipeline.py`) are strictly offline batch utilities; they are never executed inside the serving path.
 - The runtime never writes, mutates, moves, copies, re-encodes, or re-indexes database files.
 - Stale staging directories (`.staging/`) are cleaned only when explicitly building new index generations via CLI utilities.
@@ -128,7 +128,7 @@ When `QwenRuntimeSearch` initializes:
 A published FAISS generation resides in `generations/{generation_id}/` and consists of five core artifacts.
 
 ### 3.1 `CURRENT` Active Generation Pointer
-Located at `$VIDEO_PROCESSED_ROOT/index/CURRENT` or `$VISION_PROCESSED_ROOT/index/CURRENT`.
+Located at `$VIDEO_PROCESSED_ROOT/index/CURRENT`. (On current `main` only the DB v1 runtime pointer is served; the dense DB v2 pointer at `$VISION_PROCESSED_ROOT/index/CURRENT` belongs to the experimental image-search branch.)
 ```json
 {
   "schema_version": 1,

@@ -38,9 +38,6 @@ export VIDEO_PROCESSED_ROOT=/opt/aic/data/aic-db-v1/runtime
 #    model.safetensors, config.json, and scripts/qwen3_vl_embedding.py
 export QWEN3_VL_MODEL_DIR=/opt/aic/models/Qwen3-VL-Embedding-2B
 
-# 4. Path to dense Vision DB v2 (required for experimental image query search)
-export VISION_PROCESSED_ROOT=/opt/aic/data/aic-db-v2/vision/runtime/index
-
 # ------------------------------------------------------------------------------
 # OPTIONAL CONFIGURATION
 # ------------------------------------------------------------------------------
@@ -168,8 +165,8 @@ The service exposes comprehensive health and readiness probes in `backend/app/ma
       "initialized": true,
       "generation_id": "gen-A-b531063ff8ce48e1b0d62739fb290c23",
       "dimension": 1024,
-      "ocr_records": 47430,
-      "asr_records": 47430,
+      "ocr_records": 94499,
+      "asr_records": 14867,
       "weights_present": true,
       "capabilities": {
         "kis": true,

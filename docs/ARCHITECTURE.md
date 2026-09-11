@@ -228,7 +228,7 @@ The platform defines two pre-computed database generations on disk. Both maintai
                            DATABASE GENERATION TOPOLOGY
 
          DB v1 (Production Default)                   DB v2 (Dense Experimental)
-       $VIDEO_PROCESSED_ROOT/index/                  $VISION_PROCESSED_ROOT/index/
+       $VIDEO_PROCESSED_ROOT/index/                  [dense artifact root]/index/
                      │                                             │
                      ▼                                             ▼
         CURRENT -> gen-A-b531...                      CURRENT -> gen-001
@@ -261,10 +261,10 @@ The platform defines two pre-computed database generations on disk. Both maintai
   - `$VIDEO_PROCESSED_ROOT/ocr/*.json` (PaddleOCR text extractions)
   - `$VIDEO_PROCESSED_ROOT/asr/*.json` (Faster-Whisper audio transcripts)
 
-### 3.2 DB v2: Dense 1 FPS Vision Database (`DENSE_1FPS_V1`)
+### 3.2 DB v2: Dense 1 FPS Vision Database (`DENSE_1FPS_V1`) — Experimental Branch Only
 - **Generation Identifier**: `gen-001`
-- **Location**: `$VISION_PROCESSED_ROOT/index/generations/gen-001/`
-- **Pointer File**: `$VISION_PROCESSED_ROOT/index/CURRENT`
+- **Location**: dense artifact root (dense DB v2)`/index/generations/gen-001/` — accessed only by the experimental image-search branch, **not** by the current `main` runtime.
+- **Pointer File**: dense artifact root)`/index/CURRENT`
 - **Embedding Space**: **1024 dimensions**, float32, L2 unit-normalized.
 - **Vector Count**: **470,833 indexed frames**.
 - **Corpus Coverage**: 873 videos (`L21_V001` through `L30_V096`).
@@ -310,7 +310,7 @@ System behavior is declared in `backend/app/core/config.py` and configurable via
 | `SEARCH_BACKEND` | `qwen3_vl` | `main.py:111` | Primary search backend selector. `qwen3_vl` (production default) or `siglip2` (legacy). |
 | `SEARCH_ENCODER` | None | `main.py:111` | Legacy alias for `SEARCH_BACKEND`. |
 | `VIDEO_PROCESSED_ROOT` | `data/processed/videos` | `main.py:140`, `config.py` | Path to production DB v1 root containing `index/`, `ocr/`, and `asr/`. |
-| `VISION_PROCESSED_ROOT` | None | Compose / Feature branches | Root directory for DB v2 dense 1 FPS index (`gen-001`). |
+| `VISION_PROCESSED_ROOT` | None | Experimental feature branch only | Dense DB v2 root (`gen-001`). Not an environment variable of the current `main` code; used only by the experimental image-search path. |
 | `SEARCH_ENABLE_OCR` | `true` | `qwen_runtime_search.py:182` | Toggles in-memory OCR text evidence loading and score fusion. |
 | `SEARCH_ENABLE_ASR` | `true` | `qwen_runtime_search.py:183` | Toggles in-memory ASR speech transcript loading and score fusion. |
 | `ALLOWED_ORIGINS` | `localhost:3000, 127.0.0.1:3000` | `main.py:240` | Permitted origins for CORS handling. Wildcards (`*`) are disallowed when credentials are enabled. |

@@ -11,7 +11,7 @@ This document provides a complete, authoritative reference for every environment
 | `SEARCH_BACKEND` | string | `qwen3_vl` | `qwen3_vl` (production default), `siglip2` (legacy) | Canonical search backend selector. `qwen3_vl` queries the packed 1024-d FAISS index with Qwen3-VL-Embedding-2B. `siglip2` is strictly legacy and cannot query Qwen indexes. |
 | `SEARCH_ENCODER` | string | `None` | (Same as `SEARCH_BACKEND`) | Accepted as a backward-compatible legacy alias for `SEARCH_BACKEND`. |
 | `VIDEO_PROCESSED_ROOT` | string | `data/processed` | Valid directory path | Path to processed search directory containing `index/` (with active generation), `ocr/`, and `asr/` spools. |
-| `VISION_PROCESSED_ROOT` | string | `""` | Valid directory path | Path to dense 1 FPS vision index (`aic-db-v2/vision/runtime/index`). Required for experimental image query search. |
+| `VISION_PROCESSED_ROOT` | string | — | Valid directory path | **Experimental feature-branch only — NOT defined in current `main` code.** Path to the dense DB v2 root (`aic-db-v2/vision/runtime/index`) used by the experimental image-query search. |
 | `QWEN3_VL_MODEL_DIR` | string | `""` | Valid directory path | Path to local Qwen3-VL-Embedding-2B weights directory. Defaults to `${MODEL_CACHE_DIR}/Qwen3-VL-Embedding-2B`. |
 | `QWEN_MODEL_DIR` | string | `""` | Valid directory path | Secondary legacy fallback alias for `QWEN3_VL_MODEL_DIR`. |
 | `MODEL_CACHE_DIR` | string | `models` | Directory path | Base directory for cached model weights. |

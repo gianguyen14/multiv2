@@ -4,7 +4,7 @@
 
 ### Local-first multimodal video retrieval
 
-**Text → Frames · Video Q&A · TRAKE · Image Search · OCR · ASR · Temporal Refinement**
+**Text → Frames · Video Q&A · TRAKE · OCR · ASR** (Image Search: experimental branch only)
 
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Recommended-2496ED?logo=docker&logoColor=white)
@@ -23,15 +23,15 @@
 
 ## ✨ What this system does
 
-|| Mode | Input | Output | Main signals |
+| Mode | Input | Output | Main signals |
 |---|---|---|---|
 | 🔎 **Textual KIS** | Natural-language description | Ranked `video_id`, `frame_id` | Qwen3-VL visual + OCR + ASR fusion |
 | 💬 **Video Q&A** | Question about video content | Evidence frames + `answer` (extractive or remote LLM) | Visual + OCR + ASR evidence |
 | 🧭 **TRAKE** | Ordered semantic events | One video + ordered keyframes | Single-video monotonic event alignment |
-| 🖼️ **Image Search** | Query image | Visually similar frames | **EXPERIMENTAL** (Qwen GPU validation pending) |
+| 🖼️ **Image Search** | Query image | Visually similar frames | **NOT AVAILABLE ON CURRENT MAIN** (experimental branch) |
 | 🔤 **OCR / ASR** | Frames + audio | Searchable text evidence | Precomputed spool (offline ingestion) |
 
-The production search backend is **Qwen3-VL-Embedding-2B** (1024-d). SigLIP2 — the previous default — is **LEGACY** and requires explicit opt-in. Vietnamese and English queries are supported. Image Search is **EXPERIMENTAL** and not yet validated on a GPU host.
+The production search backend is **Qwen3-VL-Embedding-2B** (1024-d). SigLIP2 — the previous default — is **LEGACY** and requires explicit opt-in. Vietnamese and English queries are supported. **Image Search is NOT available on the current `main` backend** — it exists only as an experimental feature branch with a pending GPU validation, not yet merged or enabled.
 
 ---
 
@@ -77,7 +77,7 @@ The production search backend is **Qwen3-VL-Embedding-2B** (1024-d). SigLIP2 —
 
 > **Production backend:** Qwen3-VL-Embedding-2B over FAISS `IndexFlatIP` (1024-d), read-only against the packed DB. SigLIP2 (`ConfiguredSearch` / RRF / Dense `TemporalRefiner`) is **legacy** and only runs when `SEARCH_BACKEND=siglip2`.
 > **Video Q&A answers** come from OCR/ASR evidence (extractive) or an optional `remote_llm` stage; see `docs/QA_SYNTHESIS.md`.
-> **Image Search** is **experimental** (Qwen GPU validation pending).
+> **Image Search** is **NOT available on current `main`** — experimental feature branch only, GPU validation pending.
 
 ### Frame identity is authoritative
 
