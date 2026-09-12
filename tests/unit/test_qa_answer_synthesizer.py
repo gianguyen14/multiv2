@@ -41,6 +41,34 @@ def test_extractive_is_default_and_preserves_fallback():
     assert result.status == "disabled"
 
 
+def test_max_tokens_uses_configurable_budget_and_sends_it():
+    seen = {}
+
+    class LocalResponse(_Response):
+        def read(self, limit):
+            return super().read(limit)
+
+    def opener(request, timeout):
+        seen["body"] = json.loads(request.data)
+        return LocalResponse()
+
+    synth = QAAnswerSynthesizer(
+        backend="remote_llm", base_url="http://nas/v1", api_key="secret",
+        max_tokens=1024, opener=opener,
+    )
+    result = synth.synthesize("Q", [{"id": "ocr", "text": "evidence"}], fallback="")
+    assert result.backend == "remote_llm" and result.status == "ok"
+    assert synth.max_tokens == 1024
+    assert seen["body"]["max_tokens"] == 1024
+
+
+def test_max_tokens_floor_and_env_default():
+    # explicit tiny value is floored to 64
+    assert QAAnswerSynthesizer(backend="remote_llm", max_tokens=1).max_tokens == 64
+    # default comes from config QA_ANSWER_MAX_TOKENS (env override respected)
+    assert QAAnswerSynthesizer(backend="remote_llm").max_tokens >= 64
+
+
 def test_remote_sends_only_bounded_evidence_and_parses_answer():
     seen = {}
 
