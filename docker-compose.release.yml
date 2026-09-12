@@ -1,6 +1,6 @@
 services:
   backend:
-    image: gianguyen14/aic-retrieval:${RELEASE_TAG:-1.1.0-rc2}
+    image: gianguyen14/aic-retrieval:${RELEASE_TAG:-1.1.0-rc3}
     container_name: aic-retrieval-backend
     restart: unless-stopped
     ports:
@@ -9,6 +9,16 @@ services:
     environment:
       - VIDEO_PROCESSED_ROOT=/data/processed
       - MODEL_CACHE_DIR=/models
+      - SEARCH_BACKEND=${SEARCH_BACKEND:-qwen3_vl}
+      - QWEN3_VL_MODEL_DIR=${QWEN3_VL_MODEL_DIR:-}
+      - QA_ANSWER_BACKEND=${QA_ANSWER_BACKEND:-remote_llm}
+      - QA_ANSWER_URL=${QA_ANSWER_URL:-https://openrouter.ai/api}
+      - QA_ANSWER_MODEL=${QA_ANSWER_MODEL:-deepseek/deepseek-v4-flash-0731}
+      - QA_ANSWER_API_KEY=${QA_ANSWER_API_KEY:-}
+      - QA_ANSWER_MAX_TOKENS=${QA_ANSWER_MAX_TOKENS:-1024}
+      - QA_ANSWER_TIMEOUT_SECONDS=${QA_ANSWER_TIMEOUT_SECONDS:-30}
+      - QA_ANSWER_REMOTE_TOP_N=${QA_ANSWER_REMOTE_TOP_N:-2}
+      - QA_ANSWER_MAX_EVIDENCE_CHARS=${QA_ANSWER_MAX_EVIDENCE_CHARS:-12000}
       - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-0}
       - TRANSFORMERS_OFFLINE=${TRANSFORMERS_OFFLINE:-0}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000}
@@ -26,7 +36,7 @@ services:
       start_period: 20s
 
   worker:
-    image: gianguyen14/aic-retrieval:${RELEASE_TAG:-1.1.0-rc2}
+    image: gianguyen14/aic-retrieval:${RELEASE_TAG:-1.1.0-rc3}
     container_name: aic-retrieval-worker
     profiles:
       - tools

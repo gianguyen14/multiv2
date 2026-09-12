@@ -638,7 +638,7 @@ projectctl.py  CLI quản trị và điểm vào chính của project
 
 # 🎯 Trạng thái hiện tại
 
-**`1.1.0-rc2` — mã nguồn đang ở giai đoạn kiểm thử trước khi phát hành**
+**`1.1.0-rc3` — mã nguồn đang ở giai đoạn kiểm thử trước khi phát hành**
 
 RC2 hiện đang được kiểm thử trên môi trường NVIDIA GPU mục tiêu trước khi phát hành. Mọi tuyên bố về hiệu năng nên dựa trên dữ liệu đại diện và kết quả kiểm thử đã được ghi nhận.
 

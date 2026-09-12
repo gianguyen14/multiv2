@@ -705,7 +705,7 @@ projectctl.py  operator CLI / project entry point
 
 # 🎯 Current status
 
-**`1.1.0-rc2` prevalidation source**
+**`1.1.0-rc3` release candidate**
 
 The release candidate is being validated against the target NVIDIA GPU environment before promotion. Performance claims should be based on representative datasets and recorded validation results.
 
