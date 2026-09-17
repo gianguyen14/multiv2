@@ -4,11 +4,10 @@ services:
     build:
       context: .
       dockerfile: ${DOCKERFILE:-Dockerfile}
-      args:
-        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}
-    container_name: aic-retrieval-gpu
+    container_name: aic-retrieval
     restart: unless-stopped
     ports:
+      # One FastAPI process listens on container 8000; both host ports reach it.
       - "${AIC_BIND_IP:-0.0.0.0}:3000:8000"
       - "${AIC_BIND_IP:-0.0.0.0}:8000:8000"
     environment:
@@ -31,23 +30,11 @@ services:
       TORCH_HOME: /cache/torch
       HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-1}
       TRANSFORMERS_OFFLINE: ${TRANSFORMERS_OFFLINE:-1}
-      COMPUTE_DEVICE: cuda
-      VISUAL_DEVICE: cuda
-      ASR_DEVICE: cuda
-      OCR_BACKEND: ${OCR_BACKEND:-auto}
-      OCR_GPU_BACKEND: ${OCR_GPU_BACKEND:-paddleocr}
     volumes:
       - ${AIC_DATA_ROOT:-/home/hermes/aic/data/aic-db-v1/runtime}:/data/runtime:ro
       - ${AIC_MODEL_ROOT:-/home/hermes/aic/models/Qwen3-VL-Embedding-2B}:/models/Qwen3-VL-Embedding-2B:ro
       - ${AIC_VIDEO_ROOT:-/video/video}:/videos:ro
       - ${AIC_CACHE_ROOT:-/home/hermes/aic/cache/videos}:/cache/videos:rw
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=5)\""]
       interval: 30s

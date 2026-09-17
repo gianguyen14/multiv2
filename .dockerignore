@@ -1,7 +1,12 @@
+# AIC Docker image policy
+# Never send runtime data, model weights, secrets, credentials, or research artifacts.
+# The !.env.example exception is intentionally absent.
+
 # Version control
 .git
 .gitignore
 .github
+.git/**
 
 # Python environment and caches
 .venv
@@ -16,10 +21,15 @@ __pycache__
 htmlcov
 .cache
 
-# Environment secrets
+# Environment secrets and credentials
 .env
 .env.*
-!.env.example
+*.env
+credentials/
+secrets/
+*.pem
+*.key
+*.token
 
 # Runtime & Local persistent directories
 data/
@@ -35,12 +45,26 @@ validation/
 eval/
 tests/
 docs/
+paper/
+PDF/
+figures/
+*.tex
+*.bib
+*.pdf
+
+# Experiment and benchmark artifacts
+results/
 
 # Archives & Temporary files
 *.log
 *.tmp
 *.tar
 *.tar.gz
+*.zip
+*.7z
+*.db
+*.sqlite
+*.sqlite3
 input.zip
 input.zip.aria2
 qa_output.txt

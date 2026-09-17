@@ -5,6 +5,9 @@
 
 FROM python:3.12-slim
 
+# Optional CUDA PyTorch wheel index for GPU builds. CPU builds leave this empty.
+ARG TORCH_INDEX_URL=""
+
 # Prevent bytecode compilation and enable unbuffered logging
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -54,6 +57,9 @@ COPY pyproject.toml .
 
 # Install Python runtime dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
+    if [ -n "$TORCH_INDEX_URL" ]; then \
+        pip install --no-cache-dir --index-url "$TORCH_INDEX_URL" torch; \
+    fi && \
     pip install --no-cache-dir -r requirements/base.txt
 
 # Copy entrypoint script and set executable permissions
@@ -71,8 +77,9 @@ RUN chown -R appuser:appuser /app
 # Switch to non-root user
 USER appuser
 
-# Expose default API port
-EXPOSE 8000
+# The single FastAPI process listens on container port 8000.
+# Docker may publish both host 3000 and host 8000 to this same port.
+EXPOSE 3000 8000
 
 ENTRYPOINT ["docker-entrypoint.sh"]
 

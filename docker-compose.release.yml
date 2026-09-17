@@ -1,53 +1,44 @@
 services:
-  backend:
-    image: gianguyen14/aic-retrieval:${RELEASE_TAG:-1.1.0-rc3}
-    container_name: aic-retrieval-backend
+  aic:
+    image: ${IMAGE_REPOSITORY:-gianguyen14/aic-retrieval}:${IMAGE_TAG:-finals-20260917}
+    container_name: aic-retrieval
     restart: unless-stopped
     ports:
-      # Bound to localhost by default for security (unauthenticated API)
-      - "127.0.0.1:8000:8000"
+      - "${AIC_BIND_IP:-0.0.0.0}:3000:8000"
+      - "${AIC_BIND_IP:-0.0.0.0}:8000:8000"
     environment:
-      - VIDEO_PROCESSED_ROOT=/data/processed
-      - MODEL_CACHE_DIR=/models
-      - SEARCH_BACKEND=${SEARCH_BACKEND:-qwen3_vl}
-      - QWEN3_VL_MODEL_DIR=${QWEN3_VL_MODEL_DIR:-}
-      - QA_ANSWER_BACKEND=${QA_ANSWER_BACKEND:-remote_llm}
-      - QA_ANSWER_URL=${QA_ANSWER_URL:-https://openrouter.ai/api}
-      - QA_ANSWER_MODEL=${QA_ANSWER_MODEL:-deepseek/deepseek-v4-flash-0731}
-      - QA_ANSWER_API_KEY=${QA_ANSWER_API_KEY:-}
-      - QA_ANSWER_MAX_TOKENS=${QA_ANSWER_MAX_TOKENS:-1024}
-      - QA_ANSWER_TIMEOUT_SECONDS=${QA_ANSWER_TIMEOUT_SECONDS:-30}
-      - QA_ANSWER_REMOTE_TOP_N=${QA_ANSWER_REMOTE_TOP_N:-2}
-      - QA_ANSWER_MAX_EVIDENCE_CHARS=${QA_ANSWER_MAX_EVIDENCE_CHARS:-12000}
-      - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-0}
-      - TRANSFORMERS_OFFLINE=${TRANSFORMERS_OFFLINE:-0}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000}
-      - RERANKER_ENABLED=${RERANKER_ENABLED:-1}
-      - TRAKE_COHERENCE_MODE=${TRAKE_COHERENCE_MODE:-diagnostic}
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      VIDEO_PROCESSED_ROOT: /data/runtime
+      MODEL_CACHE_DIR: /models
+      QWEN3_VL_MODEL_DIR: /models/Qwen3-VL-Embedding-2B
+      SEARCH_BACKEND: ${SEARCH_BACKEND:-qwen3_vl}
+      QA_ANSWER_BACKEND: ${QA_ANSWER_BACKEND:-extractive}
+      QUERY_REFINER_ENABLED: ${QUERY_REFINER_ENABLED:-false}
+      SEARCH_ENABLE_OCR: ${SEARCH_ENABLE_OCR:-true}
+      SEARCH_ENABLE_ASR: ${SEARCH_ENABLE_ASR:-true}
+      RERANKER_ENABLED: ${RERANKER_ENABLED:-true}
+      VIDEO_SOURCE_DIR: /videos
+      VIDEO_CACHE_DIR: /cache/videos
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      HF_HOME: /cache/huggingface
+      TRANSFORMERS_CACHE: /cache/huggingface
+      TORCH_HOME: /cache/torch
+      HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-1}
+      TRANSFORMERS_OFFLINE: ${TRANSFORMERS_OFFLINE:-1}
     volumes:
-      - ${VIDEOS_DIR:-./data/videos}:/data/videos:ro
-      - ${PROCESSED_DIR:-./data/processed}:/data/processed:rw
-      - ${MODELS_DIR:-./models}:/models:rw
+      - ${AIC_DATA_ROOT:-/home/hermes/aic/data/aic-db-v1/runtime}:/data/runtime:ro
+      - ${AIC_MODEL_ROOT:-/home/hermes/aic/models/Qwen3-VL-Embedding-2B}:/models/Qwen3-VL-Embedding-2B:ro
+      - ${AIC_VIDEO_ROOT:-/video/video}:/videos:ro
+      - ${AIC_CACHE_ROOT:-/home/hermes/aic/cache/videos}:/cache/videos:rw
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=5)\""]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 20s
-
-  worker:
-    image: gianguyen14/aic-retrieval:${RELEASE_TAG:-1.1.0-rc3}
-    container_name: aic-retrieval-worker
-    profiles:
-      - tools
-    environment:
-      - VIDEO_PROCESSED_ROOT=/data/processed
-      - MODEL_CACHE_DIR=/models
-      - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-0}
-      - TRANSFORMERS_OFFLINE=${TRANSFORMERS_OFFLINE:-0}
-    volumes:
-      - ${VIDEOS_DIR:-./data/videos}:/data/videos:ro
-      - ${PROCESSED_DIR:-./data/processed}:/data/processed:rw
-      - ${MODELS_DIR:-./models}:/models:rw
-    entrypoint: ["python", "projectctl.py"]
-    command: ["--help"]
+      start_period: 120s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
