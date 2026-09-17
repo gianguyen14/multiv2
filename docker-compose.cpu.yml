@@ -7,7 +7,7 @@ services:
     container_name: aic-retrieval
     restart: unless-stopped
     ports:
-      # One FastAPI process listens on container 8000; both host ports reach it.
+      # One FastAPI process listens on container port 8000.
       - "${AIC_BIND_IP:-0.0.0.0}:3000:8000"
       - "${AIC_BIND_IP:-0.0.0.0}:8000:8000"
     environment:
