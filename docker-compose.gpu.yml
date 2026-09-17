@@ -31,6 +31,7 @@ services:
       TORCH_HOME: /cache/torch
       HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-1}
       TRANSFORMERS_OFFLINE: ${TRANSFORMERS_OFFLINE:-1}
+      TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}
       COMPUTE_DEVICE: cuda
       VISUAL_DEVICE: cuda
       ASR_DEVICE: cuda

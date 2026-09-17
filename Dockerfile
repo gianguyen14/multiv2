@@ -7,6 +7,7 @@ FROM python:3.12-slim
 
 # Optional CUDA PyTorch wheel index for GPU builds. CPU builds leave this empty.
 ARG TORCH_INDEX_URL=""
+ARG TORCH_EXTRA_INDEX_URL="https://download.pytorch.org/whl/cpu"
 
 # Prevent bytecode compilation and enable unbuffered logging
 ENV PYTHONUNBUFFERED=1 \
@@ -59,6 +60,8 @@ COPY pyproject.toml .
 RUN pip install --no-cache-dir --upgrade pip && \
     if [ -n "$TORCH_INDEX_URL" ]; then \
         pip install --no-cache-dir --index-url "$TORCH_INDEX_URL" torch; \
+    else \
+        pip install --no-cache-dir --extra-index-url "$TORCH_EXTRA_INDEX_URL" torch; \
     fi && \
     pip install --no-cache-dir -r requirements/base.txt
 
