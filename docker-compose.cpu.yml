@@ -28,6 +28,8 @@ services:
       HF_HOME: /cache/huggingface
       TRANSFORMERS_CACHE: /cache/huggingface
       TORCH_HOME: /cache/torch
+      HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-1}
+      TRANSFORMERS_OFFLINE: ${TRANSFORMERS_OFFLINE:-1}
       TORCH_INDEX_URL: ${TORCH_INDEX_URL:-}
     volumes:
       - ${AIC_DATA_ROOT:-/home/hermes/aic/data/aic-db-v1/runtime}:/data/runtime:ro

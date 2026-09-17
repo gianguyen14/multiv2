@@ -56,14 +56,17 @@ RUN mkdir -p /data/videos /data/processed /models /cache/huggingface /cache/torc
 COPY requirements/base.txt requirements/base.txt
 COPY pyproject.toml .
 
-# Install Python runtime dependencies
+# Install Python runtime dependencies. Install torch separately so the CPU
+# profile cannot pull CUDA runtime packages from the general PyPI dependency set.
 RUN pip install --no-cache-dir --upgrade pip && \
     if [ -n "$TORCH_INDEX_URL" ]; then \
-        pip install --no-cache-dir --index-url "$TORCH_INDEX_URL" torch; \
+        pip install --no-cache-dir --index-url "$TORCH_INDEX_URL" --extra-index-url https://pypi.org/simple torch; \
     else \
-        pip install --no-cache-dir --extra-index-url "$TORCH_EXTRA_INDEX_URL" torch; \
+        pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch; \
     fi && \
-    pip install --no-cache-dir -r requirements/base.txt
+    grep -v '^torch[[:space:]]*$' requirements/base.txt > /tmp/requirements-no-torch.txt && \
+    pip install --no-cache-dir -r /tmp/requirements-no-torch.txt && \
+    rm -f /tmp/requirements-no-torch.txt
 
 # Copy entrypoint script and set executable permissions
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
