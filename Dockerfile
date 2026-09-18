@@ -60,9 +60,9 @@ COPY pyproject.toml .
 # profile cannot pull CUDA runtime packages from the general PyPI dependency set.
 RUN pip install --no-cache-dir --upgrade pip && \
     if [ -n "$TORCH_INDEX_URL" ]; then \
-        pip install --no-cache-dir --index-url "$TORCH_INDEX_URL" --extra-index-url https://pypi.org/simple torch; \
+        pip install --no-cache-dir --index-url "$TORCH_INDEX_URL" --extra-index-url https://pypi.org/simple torch torchvision; \
     else \
-        pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch; \
+        pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch torchvision; \
     fi && \
     grep -v -E '^(torch|torchvision)[[:space:]]*$' requirements/base.txt > /tmp/requirements-no-torch.txt && \
     pip install --no-cache-dir -r /tmp/requirements-no-torch.txt && \
