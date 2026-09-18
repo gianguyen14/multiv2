@@ -11,6 +11,8 @@ underthesea
 faster-whisper
 av
 torch
+# Required by qwen-vl-utils during Qwen query embedding import.
+torchvision
 transformers
 huggingface-hub
 pytesseract

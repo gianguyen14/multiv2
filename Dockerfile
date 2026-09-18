@@ -64,7 +64,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     else \
         pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch; \
     fi && \
-    grep -v '^torch[[:space:]]*$' requirements/base.txt > /tmp/requirements-no-torch.txt && \
+    grep -v -E '^(torch|torchvision)[[:space:]]*$' requirements/base.txt > /tmp/requirements-no-torch.txt && \
     pip install --no-cache-dir -r /tmp/requirements-no-torch.txt && \
     rm -f /tmp/requirements-no-torch.txt
 
