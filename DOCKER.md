@@ -1,35 +1,34 @@
-# AIC Docker Operations
+# AIC Docker operations
 
-The current release uses one FastAPI process inside the container on port 8000. Host ports 3000 and 8000 both map to that same internal port, so the two URLs do not create two Qwen instances.
+Normal finals deployment is Docker Hub image-first. No GitHub clone or local build is required.
 
-## CPU
-
-```bash
-cp ops/docker/.env.cpu.example .env.cpu
-# Replace SERVER_IP and review paths in .env.cpu
-docker compose --env-file .env.cpu -f docker-compose.cpu.yml up -d
-docker compose --env-file .env.cpu -f docker-compose.cpu.yml ps
-BACKEND_URL=http://127.0.0.1:8000 FRONTEND_URL=http://127.0.0.1:3000 bash ops/finals_smoke.sh
-```
-
-See `ops/DOCKER_CPU_GUIDE.md` for A-Z setup, CPU profiles, LAN, updates, rollback, and troubleshooting.
-
-## GPU
+## CPU quick start
 
 ```bash
-nvidia-smi
-docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
-cp ops/docker/.env.gpu.example .env.gpu
-# Replace SERVER_IP and review paths in .env.gpu
-docker compose --env-file .env.gpu -f docker-compose.gpu.yml up -d
-docker compose --env-file .env.gpu -f docker-compose.gpu.yml ps
-BACKEND_URL=http://127.0.0.1:8000 FRONTEND_URL=http://127.0.0.1:3000 bash ops/finals_smoke.sh
+mkdir -p /opt/aic/config
+curl -fsSL https://raw.githubusercontent.com/gianguyen14/multiv2/main/ops/docker/release/compose.cpu.yml -o /opt/aic/config/compose.cpu.yml
+curl -fsSL https://raw.githubusercontent.com/gianguyen14/multiv2/main/ops/docker/release/.env.cpu.example -o /opt/aic/config/.env.cpu
+# Replace SERVER_IP and verify external mount paths.
+docker compose --env-file /opt/aic/config/.env.cpu -f /opt/aic/config/compose.cpu.yml pull
+docker compose --env-file /opt/aic/config/.env.cpu -f /opt/aic/config/compose.cpu.yml up -d
+docker compose --env-file /opt/aic/config/.env.cpu -f /opt/aic/config/compose.cpu.yml ps
 ```
 
-See `ops/DOCKER_GPU_GUIDE.md` for NVIDIA Container Toolkit, CUDA qualification, VRAM monitoring, and fallback procedures.
+The verified CPU image is:
 
-## Full system usage
+```text
+gianguyen14/aic-retrieval:cpu-18132237cca7
+sha256:31200173184ca6fe4b6887b6bef3a5b8cfec69a8784303bbd9ce4f0733a293e2
+```
 
-See `ops/FULL_SYSTEM_USAGE_GUIDE.md` for host-native and Docker usage, KIS/QA/TRAKE, LAN access, firewall/CORS, health, and recovery.
+## GPU status
 
-Do not put model, DB, videos, caches, or credentials into the image. Mount them externally.
+No GPU image is currently published. Use `ops/DOCKER_GPU_GUIDE.md` for the qualification gate. Do not use `gpu-finals` until that tag exists and the actual GPU host passes runtime smoke.
+
+## Guides
+
+- `ops/DOCKER_CPU_GUIDE.md`: Docker Hub CPU deployment, mounts, LAN, health, lifecycle, rollback.
+- `ops/DOCKER_GPU_GUIDE.md`: GPU prerequisites and runtime gate.
+- `ops/FULL_SYSTEM_USAGE_GUIDE.md`: complete LAN/system/operator guide.
+
+The image contains application/runtime dependencies only. Model, DB, videos, cache, and credentials remain external.

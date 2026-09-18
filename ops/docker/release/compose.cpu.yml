@@ -1,0 +1,45 @@
+services:
+  aic:
+    image: ${IMAGE_REPOSITORY:-gianguyen14/aic-retrieval}:${IMAGE_TAG:-cpu-18132237cca7}
+    container_name: aic-retrieval
+    restart: unless-stopped
+    ports:
+      # One FastAPI process listens on container port 8000.
+      - "${AIC_BIND_IP:-0.0.0.0}:3000:8000"
+      - "${AIC_BIND_IP:-0.0.0.0}:8000:8000"
+    environment:
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      VIDEO_PROCESSED_ROOT: /data/runtime
+      MODEL_CACHE_DIR: /models
+      QWEN3_VL_MODEL_DIR: /models/Qwen3-VL-Embedding-2B
+      SEARCH_BACKEND: ${SEARCH_BACKEND:-qwen3_vl}
+      QA_ANSWER_BACKEND: ${QA_ANSWER_BACKEND:-extractive}
+      QUERY_REFINER_ENABLED: ${QUERY_REFINER_ENABLED:-false}
+      SEARCH_ENABLE_OCR: ${SEARCH_ENABLE_OCR:-true}
+      SEARCH_ENABLE_ASR: ${SEARCH_ENABLE_ASR:-true}
+      RERANKER_ENABLED: ${RERANKER_ENABLED:-true}
+      VIDEO_SOURCE_DIR: /videos
+      VIDEO_CACHE_DIR: /cache/videos
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://SERVER_IP:3000}
+      HF_HOME: /cache/huggingface
+      TRANSFORMERS_CACHE: /cache/huggingface
+      TORCH_HOME: /cache/torch
+      HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-1}
+      TRANSFORMERS_OFFLINE: ${TRANSFORMERS_OFFLINE:-1}
+    volumes:
+      - ${AIC_DATA_ROOT:-/opt/aic/data/aic-db-v1/runtime}:/data/runtime:ro
+      - ${AIC_MODEL_ROOT:-/opt/aic/models/Qwen3-VL-Embedding-2B}:/models/Qwen3-VL-Embedding-2B:ro
+      - ${AIC_VIDEO_ROOT:-/opt/aic/videos}:/videos:ro
+      - ${AIC_CACHE_ROOT:-/opt/aic/cache}:/cache:rw
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

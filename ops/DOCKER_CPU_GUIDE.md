@@ -1,258 +1,172 @@
-# AIC CPU Docker Deployment Guide
+# AIC CPU Docker deployment (Docker Hub first)
 
-## Scope
+This is the normal finals/operator path. It does not require cloning GitHub or building locally.
 
-This is the CPU deployment path for the current Qwen production backend. It keeps one FastAPI process, one Qwen model instance, and one read-only production DB mount.
+## 1. Requirements
 
-## Requirements
+- Docker Engine on a Linux server.
+- At least 9 GiB RAM for the BF16 safe fallback. Do not select FP32 without a finals-host qualification showing at least 16 GiB RAM and at least 2 GiB post-startup headroom.
+- External production resources supplied by the operator:
+  - `/opt/aic/data/aic-db-v1/runtime`
+  - `/opt/aic/models/Qwen3-VL-Embedding-2B`
+  - `/opt/aic/videos`
+  - `/opt/aic/cache`
 
-- Linux server with Docker Engine and Docker Compose plugin.
-- At least 9 GiB RAM for BF16 safe fallback; 16 GiB or more is required before considering FP32, with at least 2 GiB measured headroom after startup and no swap pressure.
-- Production DB mounted at `AIC_DATA_ROOT`.
-- Qwen model mounted at `AIC_MODEL_ROOT`.
-- Raw videos mounted at `AIC_VIDEO_ROOT`.
+The image contains application code and dependencies only. It does not contain the model, DB, videos, cache, credentials, or paper/experiment artifacts.
 
-## Install Docker
+## 2. Pull the release image
 
-Use your distribution's official Docker Engine instructions. Verify:
-
-```bash
-docker --version
-docker compose version
-```
-
-If `docker compose` is unavailable, install the Docker Compose plugin before continuing. Do not use an unverified third-party installer.
-
-## Prepare host resources
-
-The example paths match this server:
+Use the immutable tag for this release:
 
 ```bash
-sudo mkdir -p /home/hermes/aic/cache/videos
-sudo test -f /home/hermes/aic/data/aic-db-v1/runtime/index/CURRENT
-sudo test -f /home/hermes/aic/models/Qwen3-VL-Embedding-2B/model.safetensors
-sudo test -d /video/video
+docker pull gianguyen14/aic-retrieval:cpu-18132237cca7
 ```
 
-The image does not contain these resources.
-
-## Clone and pin source
+The human-readable alias is also available:
 
 ```bash
-git clone https://github.com/gianguyen14/multiv2.git /home/hermes/aic
-cd /home/hermes/aic
-git fetch origin
-git checkout main
-git pull --ff-only origin main
-git rev-parse HEAD
+docker pull gianguyen14/aic-retrieval:cpu-finals
 ```
 
-For reproducible deployment, record the full SHA and use an image tag containing that SHA.
-
-## Configure CPU environment
-
-```bash
-cd /home/hermes/aic
-cp ops/docker/.env.cpu.example .env.cpu
-sed -i 's/SERVER_IP/192.168.1.50/g' .env.cpu
-```
-
-Replace `192.168.1.50` with the actual server IPv4. Review every path before starting:
-
-```bash
-sed -n '1,120p' .env.cpu
-```
-
-Do not put passwords, API tokens, GitHub tokens, or Docker tokens in `.env.cpu`.
-
-## Pull or build image
-
-Immutable pull:
-
-```bash
-docker pull gianguyen14/aic-retrieval:finals-20260917
-docker image inspect gianguyen14/aic-retrieval:finals-20260917
-```
-
-Build from the pinned repository source:
-
-```bash
-SOURCE_SHA=$(git rev-parse HEAD)
-docker build --pull -t gianguyen14/aic-retrieval:sha-${SOURCE_SHA:0:12} .
-```
-
-The `.dockerignore` excludes data, models, caches, results, logs, tests/docs, paper files, credentials, and environment files.
-
-## Start CPU Docker
-
-The container has one FastAPI process on internal `0.0.0.0:8000`. Both host ports map to that same process; this does not create a second Qwen instance.
-
-```bash
-docker compose --env-file .env.cpu -f docker-compose.cpu.yml up -d
-```
-
-Check status/logs:
-
-```bash
-docker compose --env-file .env.cpu -f docker-compose.cpu.yml ps
-docker compose --env-file .env.cpu -f docker-compose.cpu.yml logs -f aic
-```
-
-The host publishes:
+Both tags resolve to the same verified Docker Hub manifest digest:
 
 ```text
-0.0.0.0:3000 -> container:8000
-0.0.0.0:8000 -> container:8000
+sha256:31200173184ca6fe4b6887b6bef3a5b8cfec69a8784303bbd9ce4f0733a293e2
 ```
 
-Users open `http://SERVER_IP:3000` or `http://SERVER_IP:8000`; the two URLs reach the same application process. `0.0.0.0` is only a bind address and is not a browser URL.
+Do not use the historical `finals-20260917` tag for this release.
 
-## Verify CPU runtime
+## 3. Prepare external mounts
 
 ```bash
-docker compose --env-file .env.cpu -f docker-compose.cpu.yml ps
-docker inspect --format '{{.State.Health.Status}}' aic-retrieval
+sudo mkdir -p /opt/aic/{data,models,videos,cache,config}
+sudo test -f /opt/aic/data/aic-db-v1/runtime/index/CURRENT
+sudo test -f /opt/aic/models/Qwen3-VL-Embedding-2B/model.safetensors
+sudo test -d /opt/aic/videos
+```
+
+The DB must be the verified production v1 runtime. Keep the DB and model mounts read-only. The cache is writable.
+
+## 4. Start with `docker run`
+
+Replace `SERVER_IP` in `ALLOWED_ORIGINS` with the server's LAN IPv4. `0.0.0.0` is the bind/publish address; users open `http://SERVER_IP:3000`, not `http://0.0.0.0:3000`.
+
+```bash
+docker run -d \
+  --name aic-retrieval \
+  --restart unless-stopped \
+  -p 0.0.0.0:3000:8000 \
+  -p 0.0.0.0:8000:8000 \
+  -v /opt/aic/data/aic-db-v1/runtime:/data/runtime:ro \
+  -v /opt/aic/models/Qwen3-VL-Embedding-2B:/models/Qwen3-VL-Embedding-2B:ro \
+  -v /opt/aic/videos:/videos:ro \
+  -v /opt/aic/cache:/cache:rw \
+  -e VIDEO_PROCESSED_ROOT=/data/runtime \
+  -e MODEL_CACHE_DIR=/models \
+  -e QWEN3_VL_MODEL_DIR=/models/Qwen3-VL-Embedding-2B \
+  -e SEARCH_BACKEND=qwen3_vl \
+  -e QA_ANSWER_BACKEND=extractive \
+  -e QUERY_REFINER_ENABLED=false \
+  -e SEARCH_ENABLE_OCR=true \
+  -e SEARCH_ENABLE_ASR=true \
+  -e RERANKER_ENABLED=true \
+  -e VIDEO_SOURCE_DIR=/videos \
+  -e VIDEO_CACHE_DIR=/cache/videos \
+  -e ALLOWED_ORIGINS=http://SERVER_IP:3000 \
+  -e HF_HUB_OFFLINE=1 \
+  -e TRANSFORMERS_OFFLINE=1 \
+  gianguyen14/aic-retrieval:cpu-18132237cca7
+```
+
+One container runs one Uvicorn/FastAPI process on internal `0.0.0.0:8000`; host ports 3000 and 8000 both map to it. This does not start a second Qwen instance.
+
+## 5. Verify
+
+```bash
+docker ps
+docker logs -f aic-retrieval
 curl -fsS http://127.0.0.1:8000/health/ready
-curl -fsS http://127.0.0.1:3000/health/ready
 curl -I http://127.0.0.1:3000/
 curl -I http://127.0.0.1:8000/
 ss -lntp | grep -E ':3000|:8000'
+docker top aic-retrieval
 ```
 
-The health payload must identify `qwen3_vl`, the production DB root inside the container (`/data/runtime`), Qwen weights present, dimension 1024, and initialized search.
+The health response must show `qwen3_vl`, `/data/runtime`, the Qwen model path, and initialized production v1 generation. `docker top` should show one application Uvicorn process.
 
-Run finals smoke:
+Run the smoke script only when the repository's `ops/finals_smoke.sh` is available locally. Otherwise perform the equivalent endpoint checks from `ops/DOCKER_CPU_GUIDE.md`; the image itself does not contain the repository's ops scripts.
 
-```bash
-BACKEND_URL=http://127.0.0.1:8000 FRONTEND_URL=http://127.0.0.1:3000 bash ops/finals_smoke.sh
-```
-
-Expected checks: backend health, frontend HTTP, KIS, QA, known-good TRAKE, video preview, and video range all PASS.
-
-## LAN access
-
-Find the server IPv4:
+## 6. LAN access
 
 ```bash
 hostname -I
 ip addr
 ```
 
-From a laptop on the same LAN:
+Open from another LAN machine:
 
 ```text
 http://SERVER_IP:3000
 ```
 
-Backend/API:
+Backend:
 
 ```text
-http://SERVER_IP:8000
 http://SERVER_IP:8000/health
+http://SERVER_IP:8000/health/ready
 ```
 
-If UFW is active, check first:
+If UFW is active, restrict access to the LAN subnet where possible:
 
 ```bash
 sudo ufw status
-```
-
-Then, if the LAN is `192.168.1.0/24`, an administrator may allow only that subnet:
-
-```bash
 sudo ufw allow from 192.168.1.0/24 to any port 3000 proto tcp
 sudo ufw allow from 192.168.1.0/24 to any port 8000 proto tcp
 ```
 
-Never expose unauthenticated ports 3000/8000 directly to the public Internet.
+Do not expose unauthenticated ports directly to the public Internet.
 
-## Use the UI
-
-KIS: choose Textual KIS, enter a natural-language visual description, search, inspect score/video/frame/timestamp, then open the video and seek to the returned timestamp.
-
-QA: choose Q&A and enter a question. Default QA is extractive evidence handling, not generative LLM synthesis. OCR/ASR evidence may appear with the result.
-
-TRAKE: choose TRAKE, add ordered events, and search. The result must be one video with event frame IDs in increasing order. A no-match response is a valid semantic outcome; do not weaken the constraint.
-
-Current weighted evidence is visual 0.70, OCR 0.18, and ASR 0.12. The DB contains pre-extracted evidence spools; query-time OCR/ASR is lookup/scoring, not full live re-ingestion.
-
-The packed DB may not contain JPEG frame previews. `Frame image unavailable` is expected in that case. Use video preview and seek using `timestamp_seconds`; never derive authoritative frame identity with `timestamp * FPS`.
-
-## CPU dtype profiles
-
-- `SAFE_CPU_LOW_RAM`: current BF16 production path. Use below 16 GiB or whenever FP32 qualification fails.
-- `FAST_CPU_FP32`: do not enable solely from RAM size. It requires >=16 GiB, >=2 GiB measured post-startup headroom, no swap pressure, embedding/retrieval compatibility, and KIS/QA/TRAKE/frontend/video smoke PASS.
-
-The current compose file intentionally does not silently switch dtype. Any FP32 selection must be qualified on the actual finals host before changing the image/runtime configuration.
-
-## Stop, restart, update, rollback
-
-Stop without deleting volumes:
+## 7. Stop, upgrade, rollback
 
 ```bash
-docker compose --env-file .env.cpu -f docker-compose.cpu.yml down
+docker stop aic-retrieval
+docker rm aic-retrieval
 ```
 
-Restart the same immutable image:
+Upgrade by pulling an immutable tag, then rerun the same command with the new tag:
 
 ```bash
-docker compose --env-file .env.cpu -f docker-compose.cpu.yml restart aic
+docker pull gianguyen14/aic-retrieval:cpu-NEW_SHA
 ```
 
-Upgrade to another immutable tag:
+Rollback by rerunning the same mounts and environment with the previous immutable tag. Do not delete the external DB or model.
+
+## 8. Download-only Compose option
+
+Normal operators may download only the release Compose/env files; the application still comes from Docker Hub:
 
 ```bash
-sed -i 's/^IMAGE_TAG=.*/IMAGE_TAG=sha-NEW_FULL_TAG/' .env.cpu
-docker compose --env-file .env.cpu -f docker-compose.cpu.yml pull
-docker compose --env-file .env.cpu -f docker-compose.cpu.yml up -d
-docker compose --env-file .env.cpu -f docker-compose.cpu.yml ps
+mkdir -p /opt/aic/config
+curl -fsSL https://raw.githubusercontent.com/gianguyen14/multiv2/main/docker-compose.cpu.yml -o /opt/aic/config/compose.cpu.yml
+curl -fsSL https://raw.githubusercontent.com/gianguyen14/multiv2/main/ops/docker/.env.cpu.example -o /opt/aic/config/.env.cpu
 ```
 
-Rollback by setting the previous immutable tag and repeating pull/up. Never use `latest` for finals.
-
-Remove the container and network while preserving host mounts:
+Review all paths and replace `SERVER_IP`, then run:
 
 ```bash
-docker compose --env-file .env.cpu -f docker-compose.cpu.yml down
+docker compose --env-file /opt/aic/config/.env.cpu -f /opt/aic/config/compose.cpu.yml pull
+docker compose --env-file /opt/aic/config/.env.cpu -f /opt/aic/config/compose.cpu.yml up -d
+docker compose --env-file /opt/aic/config/.env.cpu -f /opt/aic/config/compose.cpu.yml ps
 ```
 
-Remove an image only after confirming no running container uses it:
+The compose file's `build:` section is for developers; normal deployment uses `pull` and the image tag.
+
+## 9. Developer / build from source
+
+This is not required for normal finals deployment. Developers may clone the repository, verify the source SHA, and use:
 
 ```bash
-docker image rm gianguyen14/aic-retrieval:TAG
+bash ops/docker/build-cpu.sh
 ```
 
-Do not remove `/home/hermes/aic/data/aic-db-v1/runtime`, model, raw video, or cache directories as part of ordinary uninstall.
-
-## Troubleshooting
-
-| Problem | Diagnosis | Fix |
-|---|---|---|
-| Docker daemon unavailable | `docker info` | Start Docker Engine; do not change application config |
-| Docker socket permission denied | `id`, `docker info` | Add the operator to the Docker group according to local policy, then start a new login session |
-| Compose plugin missing | `docker compose version` | Install the official Compose plugin |
-| Port 3000/8000 occupied | `ss -lntp \| grep -E ':3000|:8000'` | Stop the correct old container/process; never launch duplicate Qwen instances |
-| LAN unreachable | `ss -lntp`, firewall, `hostname -I` | Confirm published ports bind `0.0.0.0`, use server IPv4, allow LAN subnet |
-| CORS error | `Origin` browser URL vs `ALLOWED_ORIGINS` | Set exact `http://SERVER_IP:3000` origin in `.env.cpu` and recreate container |
-| Health not ready | `docker logs aic-retrieval`, `/health/ready` | Check DB `index/CURRENT`, model mount, permissions, and container health |
-| DB CURRENT missing | `test -f HOST/data/.../index/CURRENT` | Correct `AIC_DATA_ROOT`; keep it read-only |
-| FAISS/mapping mismatch | health/logs | Use matching production DB generation; do not rebuild during deployment |
-| Model missing | `test -f HOST/models/.../model.safetensors` | Correct `AIC_MODEL_ROOT`; do not bake model into image |
-| Model permission issue | `docker exec aic-retrieval id`, host permissions | Grant read permission to container UID 1000 without making model writable |
-| RAM OOM/swap | `free -h`, `docker stats` | Use BF16 safe profile, one container, one worker; stop before swap thrash |
-| CUDA unavailable | `nvidia-smi`, `docker run --rm --gpus all ...` | Use CPU compose or fix driver/toolkit before GPU selection |
-| GPU OOM | `docker logs`, `nvidia-smi` | Stop GPU container, use compatible GPU/profile; do not silently fall back and claim GPU PASS |
-| KIS/QA slow | `docker stats`, response latency | Qwen CPU embedding is the bottleneck; qualify hardware before dtype change |
-| TRAKE no match | API `detail` | Valid strict same-video monotonic no-match; use a known-good sequence for smoke |
-| Frame JPEG unavailable | UI message or frame 404 | Use video seek fallback; do not repack DB automatically |
-| Video preview 404 | `VIDEO_SOURCE_DIR`, host video file | Correct `AIC_VIDEO_ROOT` and matching video IDs |
-| Container restart loop | `docker compose ps`, logs | Read first startup error; check mounts/permissions/model/DB; do not keep restarting blindly |
-| Pull digest mismatch | `docker image inspect`, registry digest | Pull the exact immutable SHA tag and verify digest before startup |
-
-## Diagnostic command
-
-```bash
-bash ops/docker/diagnose.sh
-```
-
-It prints system/runtime diagnostics but no credential values.
+Never build from an uncommitted source state for a release.
