@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field, field_validator
 
-from backend.app.services.configured_search import ConfiguredSearch
+from backend.app.services.search_dispatch import build_search_provider, make_search_request, dispatch_search
 
 logger = logging.getLogger(__name__)
 
@@ -87,25 +87,8 @@ class SearchRequest(BaseModel):
 
 
 def _build_configured_search(media_root):
-    """Select the production search backend.
-
-    ``SEARCH_BACKEND`` is the canonical selector; ``SEARCH_ENCODER`` is accepted
-    as a legacy alias. The production default is ``qwen3_vl`` (Qwen3-VL-Embedding-2B
-    over the packed 47,430 x 1024-d DB). ``siglip2`` remains available only as an
-    explicit legacy mode. Unknown values fail loudly at startup so a deployment can
-    never silently fall back to the wrong embedding space.
-    """
-    backend = (os.getenv("SEARCH_BACKEND") or os.getenv("SEARCH_ENCODER") or "qwen3_vl")
-    backend = backend.strip().lower()
-    if backend in ("qwen3_vl", "qwen3-vl", "qwen"):
-        from backend.app.services.qwen_runtime_search import QwenRuntimeSearch
-
-        return QwenRuntimeSearch(processed_root=media_root)
-    if backend == "siglip2":
-        return ConfiguredSearch(media_root)
-    raise RuntimeError(
-        f"Unknown SEARCH_BACKEND={backend!r}; supported values: qwen3_vl (default), siglip2 (legacy)"
-    )
+    """Select the production search backend via the shared provider factory."""
+    return build_search_provider(media_root)
 
 
 def create_app(search_handler=None, media_root=None, configured_search=None):
@@ -178,7 +161,17 @@ def create_app(search_handler=None, media_root=None, configured_search=None):
         if not request.query.strip() and not request.events:
             raise HTTPException(400, "query is required")
         try:
-            results = search_handler(request.model_dump())
+            request_payload = make_search_request(
+                request.query_type,
+                query=request.query,
+                top_k=request.top_k,
+                events=request.events,
+                query_refine=request.query_refine,
+                temporal_refine=request.temporal_refine,
+                rerank=request.rerank,
+            )
+            results = (dispatch_search(configured_search, request_payload)
+                if uses_configured_search else search_handler(request_payload))
             resp = {"results": results}
             debug_on = request.debug_query_plan or os.getenv("DEBUG_QUERY_PLAN", "false").lower() in ("1", "true", "yes")
             if debug_on and uses_configured_search and configured_search.last_query_plan:

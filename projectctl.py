@@ -150,21 +150,24 @@ def emit(value, args, rows=None):
 
 
 def configured_search():
-    from backend.app.services.configured_search import ConfiguredSearch
+    from backend.app.services.search_dispatch import build_search_provider
     root = os.getenv("VIDEO_PROCESSED_ROOT")
     if not root:
         for cand in [Path("data/processed-validation/three-video-final"), Path("data/processed/videos")]:
             if (cand / "index" / "CURRENT").exists():
                 root = str(cand)
                 break
-    search = ConfiguredSearch(processed_root=root)
+    search = build_search_provider(processed_root=root)
     if not search.configured:
         raise RuntimeError("VIDEO_PROCESSED_ROOT is not configured")
     return search
 
 
 def search_rows(query, top_k=100, query_refine=True):
-    return configured_search().search(query, top_k, query_refine=query_refine)
+    from backend.app.services.search_dispatch import dispatch_search, make_search_request
+    return dispatch_search(configured_search(), make_search_request(
+        "kis", query=query, top_k=top_k, query_refine=query_refine
+    ))
 
 
 def command_doctor(args):
@@ -498,8 +501,10 @@ def command_image_search(args):
 
 def command_qa(args):
     refine = not getattr(args, "no_query_refine", False)
-    request = {"query": args.query, "query_type": "qa", "top_k": args.top_k, "query_refine": refine}
-    output = configured_search().handle(request)
+    from backend.app.services.search_dispatch import dispatch_search, make_search_request
+    output = dispatch_search(configured_search(), make_search_request(
+        "qa", query=args.query, top_k=args.top_k, query_refine=refine
+    ))
     emit(output, args, output)
 
 
@@ -535,7 +540,11 @@ def command_trake(args):
         return
     temporal_refine = not getattr(args, "no_temporal_refine", False)
     query_refine = not getattr(args, "no_query_refine", False)
-    results = configured_search().search_trake(events, top_k=args.top_k, temporal_refine=temporal_refine, query_refine=query_refine)
+    from backend.app.services.search_dispatch import dispatch_search, make_search_request
+    results = dispatch_search(configured_search(), make_search_request(
+        "trake", events=events, top_k=args.top_k,
+        temporal_refine=temporal_refine, query_refine=query_refine
+    ))
     if results:
         res = results[0]
         payload = {
