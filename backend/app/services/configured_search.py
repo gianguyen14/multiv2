@@ -151,16 +151,23 @@ class ConfiguredSearch:
                     payload.get("timestamp_seconds")
                     for payload in bundle.resolver.payloads.values()
                 }
-                self._bundle, self._encoder, self._ocr, self._asr, self._timestamps = (
-                    bundle, encoder, ocr, asr, timestamps
-                )
-                # Build lookup indexes for O(1) evidence access per candidate.
-                self._ocr_index: dict[tuple[str, int], list] = {}
-                for item in self._ocr:
-                    self._ocr_index.setdefault((item.video_id, item.source_frame_index_zero_based), []).append(item)
-                self._asr_index: dict[str, list] = {}
-                for item in self._asr:
-                    self._asr_index.setdefault(item.video_id, []).append(item)
+                # Build derived evidence indexes before publishing _bundle.
+                # OCR gets direct frame lookup; ASR is narrowed to candidate video
+                # before its frame-interval scan.
+                ocr_index: dict[tuple[str, int], list] = {}
+                for item in ocr:
+                    ocr_index.setdefault((item.video_id, item.source_frame_index_zero_based), []).append(item)
+                asr_index: dict[str, list] = {}
+                for item in asr:
+                    asr_index.setdefault(item.video_id, []).append(item)
+
+                self._encoder = encoder
+                self._ocr = ocr
+                self._asr = asr
+                self._timestamps = timestamps
+                self._ocr_index = ocr_index
+                self._asr_index = asr_index
+                self._bundle = bundle
 
     def status(self):
         from backend.app.services.video_source import video_url_for
