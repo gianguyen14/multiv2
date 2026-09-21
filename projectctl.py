@@ -270,12 +270,16 @@ def command_dev(args):
 def ingest_report(args):
     from backend.app.config.video_ingest_config import VideoIngestConfig
     from backend.app.runtime.operations import resource_preflight, write_run_manifest
-    from backend.app.embeddings.siglip2 import SigLIP2Encoder
+    from backend.app.embeddings.ingest_encoder import create_ingest_encoder
     from backend.app.video.ingest import ingest_path
     device = args.device or os.getenv("VIDEO_INGEST_DEVICE", os.getenv("COMPUTE_DEVICE", "auto"))
     batch_size = getattr(args, "batch_size", None)
+    backend = getattr(args, "ingest_backend", None) or os.getenv("INGEST_BACKEND", "qwen3_vl").strip().lower()
+    gpu_strict = bool(getattr(args, "gpu_strict", False))
+    qwen_dtype = getattr(args, "qwen_dtype", None) or os.getenv("QWEN_DTYPE", "auto").strip().lower()
     config = VideoIngestConfig(processed_root=Path(args.processed_root), device=device,
-        embed_batch_size=batch_size, index_type=args.index_type)
+        embed_batch_size=batch_size, index_type=args.index_type, ingest_backend=backend,
+        gpu_strict=gpu_strict, qwen_dtype=qwen_dtype)
     preflight = resource_preflight(args.path, config.processed_root)
     models = model_inventory(args.whisper_model)
     preflight["visual"] = {"runtime_ready": _module("transformers") and _module("torch"),
@@ -292,7 +296,19 @@ def ingest_report(args):
             "device": getattr(args, "asr_device", None) or device}
     if not preflight["visual"]["runtime_ready"]:
         preflight["errors"].append("visual runtime is unavailable")
-    if not preflight["visual"]["model_cached"]:
+    if backend == "qwen3_vl":
+        from backend.app.runtime.ingest_policy import kernel_smoke, probe_gpu
+        capability = probe_gpu(device)
+        preflight["qwen"] = {"backend": backend, "gpu": capability.to_dict()}
+        if config.gpu_strict and not capability.available:
+            preflight["errors"].append("GPU_STRICT requires a working CUDA device for Qwen ingest")
+        if device.startswith("cuda") and not capability.available:
+            preflight["errors"].append("requested CUDA device is unavailable")
+        if capability.available:
+            preflight["qwen"]["kernel_smoke"] = kernel_smoke(f"cuda:{capability.index}")
+            if preflight["qwen"]["kernel_smoke"]["status"] != "PASS":
+                preflight["errors"].append("Qwen CUDA kernel smoke failed")
+    elif not preflight["visual"]["model_cached"]:
         preflight["errors"].append("SigLIP2 model is not prepared; run projectctl.py models --prepare --visual")
     if args.command == "preprocess" and preflight["asr"]["enabled"] and not preflight["asr"]["model_cached"]:
         preflight["errors"].append("Faster Whisper model is not prepared; run projectctl.py models --prepare --asr")
@@ -301,15 +317,22 @@ def ingest_report(args):
         return {"preflight": preflight}
     if not preflight["ok"]:
         raise RuntimeError("preflight failed: " + "; ".join(preflight["errors"]))
-    _require_models(visual=True)
+    if backend == "siglip2":
+        _require_models(visual=True)
     from backend.app.runtime.operations import memory_guard
     preflight["memory_before_visual"] = memory_guard("visual ingestion")
-    encoder = SigLIP2Encoder(device=device, force_download=False, local_files_only=True)
+    encoder = create_ingest_encoder(config)
     run_manifest = write_run_manifest(config.processed_root / "run_manifest.json", args.command,
         args.path, config.processed_root, {"frame_id_policy": config.frame_id_policy,
             "sample_interval_seconds": config.sample_interval_seconds, "index_type": config.index_type,
             "visual_batch_size": config.embed_batch_size}, encoder.get_model_info())
     try:
+        if config.ingest_backend == "qwen3_vl":
+            encoder_identity = encoder.identity()
+            if encoder_identity.get("backend") != "qwen3_vl":
+                raise RuntimeError("Qwen ingest requires a qwen3_vl encoder")
+            if encoder_identity.get("embedding_dim") != 1024:
+                raise RuntimeError("Qwen ingest requires 1024-D embeddings")
         report = ingest_path(args.path, encoder, config, limit=getattr(args, "limit", None))
         report["compute"] = encoder.get_model_info()
         report["preflight"] = preflight
@@ -766,6 +789,9 @@ def parser():
         item.add_argument("path")
         item.add_argument("--processed-root", default=os.getenv("VIDEO_PROCESSED_ROOT", "data/processed/videos"))
         item.add_argument("--device")
+        item.add_argument("--ingest-backend", default=os.getenv("INGEST_BACKEND", "siglip2"), choices=("siglip2", "qwen3_vl"))
+        item.add_argument("--gpu-strict", action="store_true", default=os.getenv("GPU_STRICT", "false").lower() in ("1", "true", "yes"))
+        item.add_argument("--qwen-dtype", default=os.getenv("QWEN_DTYPE", "auto"), choices=("auto", "bfloat16", "float16", "float32"))
         item.add_argument("--ocr-backend", default=os.getenv("OCR_BACKEND", "auto"), choices=("auto", "tesseract", "paddleocr", "easyocr"))
         item.add_argument("--ocr-device")
         item.add_argument("--asr-device")

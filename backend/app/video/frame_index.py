@@ -95,7 +95,7 @@ def load_current_frame_index(output_root):
     return validate_generation(output_root / "generations" / generation_id, generation_id)
 
 
-def build_frame_index(store, manifests, output_root, embedding_dim, index_type="flat", failpoint=None):
+def build_frame_index(store, manifests, output_root, embedding_dim, index_type="flat", failpoint=None, encoder_identity=None):
     failpoint = failpoint or (lambda name, context: None)
     output_root = Path(output_root)
     staging_root = output_root / ".staging"
@@ -129,6 +129,8 @@ def build_frame_index(store, manifests, output_root, embedding_dim, index_type="
     metadata = {"schema_version": 1, "generation_id": generation_id, "index_type": index_type,
         "embedding_dim": embedding_dim, "vector_count": len(frame_ids),
         "video_ids": [manifest.video_id for manifest in sorted(manifests, key=lambda item: item.video_id)]}
+    if encoder_identity is not None:
+        metadata["encoder_identity"] = dict(encoder_identity)
     metadata["artifact_sha256"] = {name: _sha256(staging / name) for name in ("frames.faiss", "mapping.json", "payloads.json")}
     write_json_atomic(staging / "generation.json", metadata)
     failpoint("before_validation", {"generation_id": generation_id})

@@ -1,9 +1,15 @@
 import argparse
 import json
+import os
+import sys
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[3]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from backend.app.config.video_ingest_config import VideoIngestConfig
-from backend.app.embeddings.siglip2 import SigLIP2Encoder
+from backend.app.embeddings.ingest_encoder import create_ingest_encoder
 from backend.app.video.frame_index import build_frame_index
 from backend.app.video.m15_ingestion_pipeline import VideoIngestionPipeline
 
@@ -37,6 +43,9 @@ def ingest_path(input_path, encoder, config, limit=None, force=False, fail_fast=
             if fail_fast:
                 break
     identity = pipeline._encoder_identity()
+    if config.ingest_backend == "qwen3_vl":
+        if identity.get("backend") != "qwen3_vl" or int(identity.get("embedding_dim", 0)) != 1024:
+            raise RuntimeError("Qwen ingest requires qwen3_vl backend with 1024-D embeddings")
     manifests = [manifest for manifest in pipeline.store.manifests()
         if manifest.status in {"embeddings_ready", "indexed"}
         and manifest.completed_stage == "embeddings"
@@ -53,7 +62,8 @@ def ingest_path(input_path, encoder, config, limit=None, force=False, fail_fast=
         started = time.perf_counter()
         try:
             bundle = build_frame_index(pipeline.store, manifests, config.processed_root / "index",
-                identity["embedding_dim"], config.index_type, failpoint=index_failpoint)
+                identity["embedding_dim"], config.index_type, failpoint=index_failpoint,
+                encoder_identity=identity)
             indexed = bundle.index.index.ntotal
             active_generation = bundle.generation_id
         except Exception as exc:
@@ -76,15 +86,20 @@ def main():
     parser.add_argument("--output", default="data/processed/videos")
     parser.add_argument("--sample-interval", type=float, default=1.0)
     parser.add_argument("--batch-size", type=int, default=8)
-    parser.add_argument("--device", default="cpu")
+    parser.add_argument("--device", default=os.getenv("VIDEO_INGEST_DEVICE", os.getenv("COMPUTE_DEVICE", "auto")))
+    parser.add_argument("--ingest-backend", default=os.getenv("INGEST_BACKEND", "qwen3_vl"), choices=("siglip2", "qwen3_vl"))
+    parser.add_argument("--gpu-strict", action="store_true", default=os.getenv("GPU_STRICT", "false").lower() in ("1", "true", "yes"))
+    parser.add_argument("--qwen-dtype", default=os.getenv("QWEN_DTYPE", "auto"), choices=("auto", "bfloat16", "float16", "float32"))
     parser.add_argument("--limit", type=int)
     parser.add_argument("--resume", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--fail-fast", action="store_true")
     args = parser.parse_args()
     config = VideoIngestConfig(processed_root=Path(args.output), sample_interval_seconds=args.sample_interval,
-        embed_batch_size=args.batch_size, device=args.device, resume=args.resume)
-    encoder = SigLIP2Encoder(device=args.device, force_download=False)
+        embed_batch_size=args.batch_size, device=args.device, resume=args.resume,
+        ingest_backend=args.ingest_backend, gpu_strict=args.gpu_strict,
+        qwen_dtype=args.qwen_dtype)
+    encoder = create_ingest_encoder(config)
     report = ingest_path(args.input, encoder, config, args.limit, args.force, args.fail_fast)
     print(json.dumps(report, indent=2, sort_keys=True))
     raise SystemExit(1 if report["videos_failed"] else 0)

@@ -19,6 +19,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import sys
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -64,6 +65,7 @@ class Qwen3VlLocalEmbedder:
         attn_implementation: str = "eager",
         low_cpu_mem_usage: bool = True,
         threads: int = 2,
+        device: str = "auto",
     ):
         self.model_dir = Path(resolve_model_dir(model_dir))
         self.max_length = int(max_length)
@@ -72,7 +74,9 @@ class Qwen3VlLocalEmbedder:
         self.attn_implementation = attn_implementation
         self.low_cpu_mem_usage = low_cpu_mem_usage
         self.threads = int(threads)
+        self.device = str(device or "auto")
         self._embedder = None
+        self._load_lock = threading.Lock()
 
     # -- availability -----------------------------------------------------
 
@@ -85,9 +89,17 @@ class Qwen3VlLocalEmbedder:
     def _ensure_loaded(self):
         if self._embedder is not None:
             return
+        with self._load_lock:
+            if self._embedder is not None:
+                return
+            self._load_impl()
+
+    def _load_impl(self):
         import torch
 
         torch.set_num_threads(self.threads)
+        if self.device.startswith("cuda") and not torch.cuda.is_available():
+            raise RuntimeError(f"Qwen device {self.device} requested but CUDA is unavailable")
         script = model_script_path(self.model_dir)
         if not script.is_file():
             raise RuntimeError(
@@ -111,6 +123,10 @@ class Qwen3VlLocalEmbedder:
             low_cpu_mem_usage=self.low_cpu_mem_usage,
             attn_implementation=self.attn_implementation,
         )
+        if self.device.startswith("cuda"):
+            import torch
+            target = torch.device(self.device)
+            self._embedder.model.to(target)
 
     # -- encoding ---------------------------------------------------------
 

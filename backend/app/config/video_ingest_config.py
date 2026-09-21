@@ -27,6 +27,12 @@ class VideoIngestConfig:
     visual_global_sample_seconds: float = 5.0
     visual_dedup_enabled: bool = False
     visual_dedup_threshold: float = 0.97
+    ingest_backend: str = "siglip2"
+    qwen_embedding_dim: int = 1024
+    gpu_strict: bool = False
+    qwen_dtype: str = "auto"
+    qwen_batch_min: int = 1
+    qwen_batch_max: int = 32
 
     @property
     def effective_sample_interval_seconds(self) -> float:
@@ -71,6 +77,12 @@ class VideoIngestConfig:
             raise ValueError("invalid video ingest configuration")
         if self.index_type not in {"flat", "hnsw"}:
             raise ValueError("unsupported video index type")
+        if self.ingest_backend not in {"siglip2", "qwen3_vl"}:
+            raise ValueError("unsupported ingest backend")
+        if self.ingest_backend == "qwen3_vl" and self.qwen_embedding_dim != 1024:
+            raise ValueError("Qwen production ingest requires embedding dimension 1024")
+        if self.qwen_batch_min < 1 or self.qwen_batch_max < self.qwen_batch_min:
+            raise ValueError("invalid Qwen batch bounds")
 
     @classmethod
     def from_env(cls):
@@ -101,6 +113,12 @@ class VideoIngestConfig:
             visual_global_sample_seconds=visual_global_sample_seconds,
             visual_dedup_enabled=os.getenv("VISUAL_DEDUP_ENABLED", "false").lower() in ("true", "1", "yes"),
             visual_dedup_threshold=visual_dedup_threshold,
+            ingest_backend=os.getenv("INGEST_BACKEND", "qwen3_vl").strip().lower(),
+            qwen_embedding_dim=int(os.getenv("QWEN_EMBED_DIM", "1024")),
+            gpu_strict=os.getenv("GPU_STRICT", "false").lower() in ("1", "true", "yes"),
+            qwen_dtype=os.getenv("QWEN_DTYPE", "auto").strip().lower(),
+            qwen_batch_min=int(os.getenv("GPU_BATCH_MIN", "1")),
+            qwen_batch_max=int(os.getenv("GPU_BATCH_MAX", "32")),
         )
 
     def metadata_fingerprint(self):
