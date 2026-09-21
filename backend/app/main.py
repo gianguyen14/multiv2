@@ -19,19 +19,6 @@ MAX_IMAGE_UPLOAD_BYTES = 15 * 1024 * 1024
 SUPPORTED_IMAGE_FORMATS = {"JPEG", "PNG", "WEBP"}
 
 
-def _iter_file_range(path: Path, start: int, end: int, chunk_size: int = 1024 * 1024):
-    """Yield an inclusive byte range without loading a video into memory."""
-    remaining = end - start + 1
-    with path.open("rb") as stream:
-        stream.seek(start)
-        while remaining:
-            chunk = stream.read(min(chunk_size, remaining))
-            if not chunk:
-                break
-            remaining -= len(chunk)
-            yield chunk
-
-
 def _debug_api_errors_enabled() -> bool:
     return os.getenv("DEBUG_API_ERRORS", "false").strip().lower() in {"1", "true", "yes"}
 
@@ -267,6 +254,9 @@ def create_app(search_handler=None, media_root=None, configured_search=None):
 
     @app.get("/api/frames/{video_id}/{filename}")
     def frame(video_id: str, filename: str):
+        from backend.app.services.video_source import valid_video_id as _valid_id
+        if not _valid_id(video_id):
+            raise HTTPException(404, "frame not found")
         if Path(filename).suffix.lower() not in {".jpg", ".webp", ".png"} or "/" in filename or "\\" in filename:
             raise HTTPException(404, "frame not found")
         frame_root = (media_root / video_id / "frames").resolve()
@@ -284,12 +274,12 @@ def create_app(search_handler=None, media_root=None, configured_search=None):
         try:
             path = resolve_video_path(video_id)
         except ValueError:
-            raise HTTPException(404, "video not found")
+            raise HTTPException(404, "video not found") from None
         except FileNotFoundError as exc:
-            raise HTTPException(404, str(exc))
+            raise HTTPException(404, "video not found") from exc
         except (OSError, RuntimeError) as exc:
             logger.exception("video source error")
-            raise HTTPException(503, f"video source error: {exc}")
+            raise HTTPException(503, _unavailable_detail("video source", exc)) from exc
 
         size = path.stat().st_size
         range_header = request.headers.get("range")

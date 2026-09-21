@@ -59,7 +59,7 @@ class QAAnswerSynthesizer:
         self.backend = (backend if backend is not None else QA_ANSWER_BACKEND).strip().lower()
         self.base_url = (base_url if base_url is not None else QA_ANSWER_URL).strip().rstrip("/")
         self.model = (model if model is not None else QA_ANSWER_MODEL).strip() or "agent-lite"
-        self.api_key = api_key if api_key is not None else os.getenv("QA_ANSWER_API_KEY", "")
+        self.api_key = (api_key if api_key is not None else os.getenv("QA_ANSWER_API_KEY", "")).strip()
         self.timeout_seconds = max(
             0.5,
             float(timeout_seconds if timeout_seconds is not None else QA_ANSWER_TIMEOUT_SECONDS),

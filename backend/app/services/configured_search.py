@@ -90,6 +90,8 @@ class ConfiguredSearch:
         self._encoder = None
         self._ocr = []
         self._asr = []
+        self._ocr_index: dict[tuple[str, int], list] = {}
+        self._asr_index: dict[str, list] = {}
         self._timestamps: dict[tuple[str, int], float | None] = {}
         self._query_refiner = None
         self._candidate_reranker = CandidateReranker(enabled=self.enable_rerank)
@@ -97,6 +99,7 @@ class ConfiguredSearch:
         self._validated_generation_id = None
         self.last_query_plan = None
         self.last_query_metrics = {}
+        self.last_trake_metrics = {}
 
     def _get_query_refiner(self) -> QueryRefiner:
         if self._query_refiner is None:
@@ -151,6 +154,13 @@ class ConfiguredSearch:
                 self._bundle, self._encoder, self._ocr, self._asr, self._timestamps = (
                     bundle, encoder, ocr, asr, timestamps
                 )
+                # Build lookup indexes for O(1) evidence access per candidate.
+                self._ocr_index: dict[tuple[str, int], list] = {}
+                for item in self._ocr:
+                    self._ocr_index.setdefault((item.video_id, item.source_frame_index_zero_based), []).append(item)
+                self._asr_index: dict[str, list] = {}
+                for item in self._asr:
+                    self._asr_index.setdefault(item.video_id, []).append(item)
 
     def status(self):
         from backend.app.services.video_source import video_url_for
@@ -265,12 +275,11 @@ class ConfiguredSearch:
             v_norm = (v_raw - v_min) / v_rng if v_raw > 0 else 0.0
 
             ocr_texts = [
-                item.normalized_text for item in self._ocr
-                if item.video_id == vid and item.source_frame_index_zero_based == fid
+                item.normalized_text for item in self._ocr_index.get((vid, fid), [])
             ]
             asr_texts = [
-                item.normalized_text for item in self._asr
-                if item.video_id == vid and item.start_frame is not None
+                item.normalized_text for item in self._asr_index.get(vid, [])
+                if item.start_frame is not None
                 and item.start_frame <= fid <= (item.end_frame or item.start_frame)
             ]
 
@@ -844,6 +853,7 @@ class ConfiguredSearch:
             metrics["coherence_mode"] = coherence_analyzer.mode
             metrics["normalized_dispersion"] = diag.normalized_dispersion
         else:
+            diag = None
             metrics["frame_gaps"] = []
             metrics["max_frame_gap"] = 0
             metrics["mean_frame_gap"] = 0.0
@@ -855,7 +865,7 @@ class ConfiguredSearch:
         self.last_trake_metrics = metrics
 
         if result:
-            diag_dict = coherence_analyzer.analyze(result.video_id, result.frame_ids).to_dict() if result.frame_ids else {}
+            diag_dict = diag.to_dict() if (diag is not None and result.frame_ids) else {}
             res_item = {
                 "video_id": result.video_id,
                 "frame_ids": result.frame_ids,
