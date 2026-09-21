@@ -68,7 +68,7 @@ Do not set the output to the active production DB until an independent compatibi
 
 | Hardware | Code policy | Real validation |
 |---|---|---|
-| CPU | float32 fallback | PASS for policy/unit behavior; ingest model run not performed | 
+| CPU | float32 fallback | PASS for policy/unit behavior; ingest model run not performed |
 | RTX 3060 | capability-based, conservative batch | PENDING_HARDWARE_VALIDATION |
 | A40 | capability-based, larger safe batch | PENDING_HARDWARE_VALIDATION |
 | RTX 5090 | Blackwell-compatible runtime required | PENDING_HARDWARE_VALIDATION |
