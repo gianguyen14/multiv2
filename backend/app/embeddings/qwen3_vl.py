@@ -100,6 +100,8 @@ class Qwen3VlLocalEmbedder:
         torch.set_num_threads(self.threads)
         if self.device.startswith("cuda") and not torch.cuda.is_available():
             raise RuntimeError(f"Qwen device {self.device} requested but CUDA is unavailable")
+        if self.device.startswith("cuda:"):
+            torch.cuda.set_device(torch.device(self.device))
         script = model_script_path(self.model_dir)
         if not script.is_file():
             raise RuntimeError(
@@ -127,6 +129,9 @@ class Qwen3VlLocalEmbedder:
             import torch
             target = torch.device(self.device)
             self._embedder.model.to(target)
+        elif self.device == "cpu":
+            import torch
+            self._embedder.model.to(torch.device("cpu"))
 
     # -- encoding ---------------------------------------------------------
 
