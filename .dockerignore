@@ -1,6 +1,5 @@
-# AIC Docker image policy
-# Never send runtime data, model weights, secrets, credentials, or research artifacts.
-# The !.env.example exception is intentionally absent.
+# Build context excludes runtime data, model weights, tests/docs/experiments,
+# and all untracked work from the deployment image.
 
 # Version control
 .git

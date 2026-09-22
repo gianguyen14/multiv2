@@ -5,12 +5,21 @@
 
 FROM python:3.12-slim
 
-# Optional CUDA PyTorch wheel index for GPU builds. CPU builds leave this empty.
+# Build-time runtime selection. V100 builds use the CUDA 11.8 wheel index;
+# modern builds use a CUDA 12.x index selected by the build script.
 ARG TORCH_INDEX_URL=""
+ARG TORCH_VERSION=""
+ARG TORCHVISION_VERSION=""
 ARG TORCH_EXTRA_INDEX_URL="https://download.pytorch.org/whl/cpu"
+ARG SOURCE_REVISION="unknown"
 
-# Prevent bytecode compilation and enable unbuffered logging
-ENV PYTHONUNBUFFERED=1 \
+LABEL org.opencontainers.image.source="https://github.com/gianguyen14/multiv2" \
+      org.opencontainers.image.revision="$SOURCE_REVISION" \
+      org.opencontainers.image.title="AIC multiv2 retrieval"
+
+# Optional runtime metadata/config defaults
+ENV SOURCE_REVISION=$SOURCE_REVISION \
+    PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     DEBIAN_FRONTEND=noninteractive \
     VIDEO_PROCESSED_ROOT=/data/processed \
@@ -56,11 +65,16 @@ RUN mkdir -p /data/videos /data/processed /models /cache/huggingface /cache/torc
 COPY requirements/base.txt requirements/base.txt
 COPY pyproject.toml .
 
-# Install Python runtime dependencies. Install torch separately so the CPU
-# profile cannot pull CUDA runtime packages from the general PyPI dependency set.
+# ---------------------------------------------------------------------------
+# Runtime dependency installation
+# ---------------------------------------------------------------------------
 RUN pip install --no-cache-dir --upgrade pip && \
     if [ -n "$TORCH_INDEX_URL" ]; then \
-        pip install --no-cache-dir --index-url "$TORCH_INDEX_URL" --extra-index-url https://pypi.org/simple torch torchvision; \
+        if [ -n "$TORCH_VERSION" ] && [ -n "$TORCHVISION_VERSION" ]; then \
+            pip install --no-cache-dir --index-url "$TORCH_INDEX_URL" --extra-index-url https://pypi.org/simple "torch==$TORCH_VERSION" "torchvision==$TORCHVISION_VERSION"; \
+        else \
+            pip install --no-cache-dir --index-url "$TORCH_INDEX_URL" --extra-index-url https://pypi.org/simple torch torchvision; \
+        fi; \
     else \
         pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch torchvision; \
     fi && \
