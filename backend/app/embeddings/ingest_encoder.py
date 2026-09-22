@@ -73,6 +73,10 @@ class QwenImageIngestEncoder:
     def get_model_info(self):
         return {**self.identity(), "device": self.device, "gpu": self.capability.to_dict(), "effective_batch_size": self.effective_batch_size}
 
+    def load_model(self):
+        """Load model weights before corpus decode; fail early on runtime incompatibility."""
+        self._embedder._ensure_loaded()
+
     def encode_image(self, images, batch_size=None, normalize=True):
         if not normalize:
             raise ValueError("Qwen production ingest requires normalization")

@@ -158,6 +158,7 @@ def test_offline_verification_fails_for_missing_model(monkeypatch, capsys):
 
 
 def test_preprocess_checks_visual_before_ingest(monkeypatch, capsys):
+    monkeypatch.setenv("INGEST_BACKEND", "siglip2")
     monkeypatch.setattr(projectctl, "model_inventory", lambda model=None: inventory(False, True))
     monkeypatch.setattr(projectctl, "ingest_report", projectctl.ingest_report)
     assert projectctl.main(["preprocess", "videos"]) == 1

@@ -27,7 +27,7 @@ class VideoIngestConfig:
     visual_global_sample_seconds: float = 5.0
     visual_dedup_enabled: bool = False
     visual_dedup_threshold: float = 0.97
-    ingest_backend: str = "siglip2"
+    ingest_backend: str = "qwen3_vl"
     qwen_embedding_dim: int = 1024
     gpu_strict: bool = False
     qwen_dtype: str = "auto"

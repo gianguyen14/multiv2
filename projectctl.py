@@ -299,17 +299,50 @@ def ingest_report(args):
     if not preflight["visual"]["runtime_ready"]:
         preflight["errors"].append("visual runtime is unavailable")
     if backend == "qwen3_vl":
+        from backend.app.embeddings.qwen3_vl import model_script_path, resolve_model_dir, weights_available
         from backend.app.runtime.ingest_policy import kernel_smoke, probe_gpu
+        model_dir = resolve_model_dir()
+        required = [model_dir / "config.json", model_dir / "model.safetensors", model_script_path(model_dir)]
+        preflight["qwen"] = {"backend": backend, "model_dir": str(model_dir),
+            "weights_present": weights_available(model_dir),
+            "required_files": {str(path): path.is_file() for path in required}, "gpu": None}
+        if not preflight["qwen"]["weights_present"]:
+            preflight["errors"].append("Qwen model weights/config/script are unavailable")
         capability = probe_gpu(device)
-        preflight["qwen"] = {"backend": backend, "gpu": capability.to_dict()}
-        if config.gpu_strict and not capability.available:
-            preflight["errors"].append("GPU_STRICT requires a working CUDA device for Qwen ingest")
-        if device.startswith("cuda") and not capability.available:
-            preflight["errors"].append("requested CUDA device is unavailable")
+        preflight["qwen"]["gpu"] = capability.to_dict()
+        requires_gpu = config.gpu_strict or device.startswith("cuda")
+        if requires_gpu and not capability.available:
+            preflight["errors"].append("Qwen GPU preflight requires a working CUDA device")
         if capability.available:
             preflight["qwen"]["kernel_smoke"] = kernel_smoke(f"cuda:{capability.index}")
             if preflight["qwen"]["kernel_smoke"]["status"] != "PASS":
                 preflight["errors"].append("Qwen CUDA kernel smoke failed")
+        # Model load and image-contract validation happen before ingest_path.
+        if not preflight["errors"]:
+            try:
+                from backend.app.embeddings.ingest_encoder import QwenImageIngestEncoder
+                from PIL import Image
+                import numpy as np
+                encoder_probe = QwenImageIngestEncoder(model_dir=model_dir, device=device,
+                    dtype=config.qwen_dtype, batch_size=1, strict_gpu=requires_gpu,
+                    batch_min=1, batch_max=1)
+                fixture = next((Path(candidate) for candidate in (
+                    os.getenv("QWEN_INGEST_TEST_IMAGE", ""),
+                    "tests/fixtures/qwen_probe.jpg", "tests/fixtures/qwen_probe.png",
+                ) if candidate and Path(candidate).is_file()), None)
+                preflight["qwen"]["probe_image"] = str(fixture) if fixture else None
+                if fixture:
+                    with Image.open(fixture) as image:
+                        vector = encoder_probe.encode_image(image, batch_size=1)
+                    preflight["qwen"]["probe_embedding"] = {"shape": list(vector.shape), "dtype": str(vector.dtype),
+                        "finite": bool(np.isfinite(vector).all()), "norm": float(np.linalg.norm(vector[0]))}
+                    if preflight["qwen"]["probe_embedding"]["shape"] != [1, 1024] or not preflight["qwen"]["probe_embedding"]["finite"] or abs(preflight["qwen"]["probe_embedding"]["norm"] - 1.0) > 1e-5:
+                        preflight["errors"].append("Qwen probe embedding failed the 1024-D float32 finite L2 contract")
+                    encoder_probe.clear_cache()
+                else:
+                    preflight["qwen"]["probe_status"] = "PENDING_FIXTURE_OR_HARDWARE"
+            except Exception as exc:
+                preflight["errors"].append(f"Qwen model/image preflight failed: {type(exc).__name__}: {exc}")
     elif not preflight["visual"]["model_cached"]:
         preflight["errors"].append("SigLIP2 model is not prepared; run projectctl.py models --prepare --visual")
     if args.command == "preprocess" and preflight["asr"]["enabled"] and not preflight["asr"]["model_cached"]:
@@ -324,6 +357,8 @@ def ingest_report(args):
     from backend.app.runtime.operations import memory_guard
     preflight["memory_before_visual"] = memory_guard("visual ingestion")
     encoder = create_ingest_encoder(config)
+    if config.ingest_backend == "qwen3_vl":
+        encoder.load_model()
     run_manifest = write_run_manifest(config.processed_root / "run_manifest.json", args.command,
         args.path, config.processed_root, {"frame_id_policy": config.frame_id_policy,
             "sample_interval_seconds": config.sample_interval_seconds, "index_type": config.index_type,
@@ -497,7 +532,8 @@ def command_index(args):
         raise RuntimeError("cannot publish Qwen index: expected 1024-D embeddings")
     from backend.app.video.frame_index import build_frame_index
     bundle = build_frame_index(__import__("backend.app.video.frame_store", fromlist=["FrameStore"]).FrameStore(root),
-        manifests, Path(root) / "index", manifests[0].embedding_dim, args.index_type)
+        manifests, Path(root) / "index", manifests[0].embedding_dim, args.index_type,
+        encoder_identity=canonical)
     emit({"generation_id": bundle.generation_id, "vector_count": bundle.index.index.ntotal}, args)
 
 
@@ -799,7 +835,7 @@ def parser():
         item.add_argument("path")
         item.add_argument("--processed-root", default=os.getenv("VIDEO_PROCESSED_ROOT", "data/processed/videos"))
         item.add_argument("--device")
-        item.add_argument("--ingest-backend", default=os.getenv("INGEST_BACKEND", "siglip2"), choices=("siglip2", "qwen3_vl"))
+        item.add_argument("--ingest-backend", default=os.getenv("INGEST_BACKEND", "qwen3_vl"), choices=("siglip2", "qwen3_vl"))
         item.add_argument("--gpu-strict", action="store_true", default=os.getenv("GPU_STRICT", "false").lower() in ("1", "true", "yes"))
         item.add_argument("--qwen-dtype", default=os.getenv("QWEN_DTYPE", "auto"), choices=("auto", "bfloat16", "float16", "float32"))
         item.add_argument("--ocr-backend", default=os.getenv("OCR_BACKEND", "auto"), choices=("auto", "tesseract", "paddleocr", "easyocr"))
