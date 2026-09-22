@@ -12,7 +12,7 @@ from tests.m15_support import MeanRGBEncoder
 
 @pytest.mark.parametrize("failure", ["after_staging_write", "before_validation", "after_validation", "index_pre_publish"])
 def test_failed_publication_preserves_previous_generation(tmp_path, failure):
-    config = VideoIngestConfig(processed_root=tmp_path)
+    config = VideoIngestConfig(processed_root=tmp_path, ingest_backend="siglip2")
     encoder = MeanRGBEncoder()
     pipeline = VideoIngestionPipeline(encoder, config)
     pipeline.ingest_video("tests/fixtures/test_5s.mp4")
@@ -32,7 +32,7 @@ def test_failed_publication_preserves_previous_generation(tmp_path, failure):
 
 
 def test_current_replace_failure_preserves_active_generation(tmp_path, monkeypatch):
-    config = VideoIngestConfig(processed_root=tmp_path)
+    config = VideoIngestConfig(processed_root=tmp_path, ingest_backend="siglip2")
     pipeline = VideoIngestionPipeline(MeanRGBEncoder(), config)
     pipeline.ingest_video("tests/fixtures/test_5s.mp4")
     manifest = pipeline.store.load_manifest("test_5s")

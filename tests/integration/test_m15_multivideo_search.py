@@ -14,7 +14,7 @@ def test_multivideo_search_resolves_original_frames(tmp_path):
     create_video(corpus / "synthetic_white_cup.mp4", "white_cup")
     output = tmp_path / "processed"
     encoder = MeanRGBEncoder()
-    report = ingest_path(corpus, encoder, VideoIngestConfig(processed_root=output))
+    report = ingest_path(corpus, encoder, VideoIngestConfig(processed_root=output, ingest_backend="siglip2"))
     assert report["videos_succeeded"] == 3 and report["videos_failed"] == 0
     bundle = load_current_frame_index(output / "index")
     assert bundle.index.index.ntotal == 6

@@ -50,7 +50,7 @@ def test_forced_interruption_resumes_from_highest_valid_stage(tmp_path, stage, e
         VideoIngestionPipeline(encoder, config, failpoint).ingest_video(source)
     interrupted = VideoIngestionPipeline(encoder, config).store.load_manifest("test_5s")
     assert interrupted.status == "failed"
-    result = VideoIngestionPipeline(encoder, config).ingest_video(source)
+    result = VideoIngestionPipeline(encoder, VideoIngestConfig(processed_root=resumed_root, ingest_backend="siglip2")).ingest_video(source)
     assert result["start_stage"] == expected_start
     assert encoder.calls == expected_calls
     healed = VideoIngestionPipeline(encoder, config).store.load_manifest("test_5s")

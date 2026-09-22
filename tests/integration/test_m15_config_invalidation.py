@@ -26,7 +26,7 @@ def test_config_invalidation_is_dependency_aware(tmp_path):
 
 
 def test_manifest_claim_is_rejected_when_embedding_is_missing(tmp_path):
-    config = VideoIngestConfig(processed_root=tmp_path)
+    config = VideoIngestConfig(processed_root=tmp_path, ingest_backend="siglip2")
     encoder = MeanRGBEncoder()
     VideoIngestionPipeline(encoder, config).ingest_video("tests/fixtures/test_5s.mp4")
     (tmp_path / "test_5s/embeddings.npy").unlink()
@@ -36,7 +36,7 @@ def test_manifest_claim_is_rejected_when_embedding_is_missing(tmp_path):
 
 def test_index_type_change_rebuilds_only_index(tmp_path, monkeypatch):
     source = "tests/fixtures/test_5s.mp4"
-    flat_config = VideoIngestConfig(processed_root=tmp_path, index_type="flat")
+    flat_config = VideoIngestConfig(processed_root=tmp_path, index_type="flat", ingest_backend="siglip2")
     ingest_path(source, MeanRGBEncoder(), flat_config)
     flat = load_current_frame_index(tmp_path / "index")
     store = VideoIngestionPipeline(MeanRGBEncoder(), flat_config).store

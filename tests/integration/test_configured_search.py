@@ -15,7 +15,7 @@ class QueryEncoder:
 
 def test_configured_app_lazily_opens_current_generation(tmp_path):
     root = tmp_path / "processed"
-    ingest_path("tests/fixtures/test_5s.mp4", MeanRGBEncoder(), VideoIngestConfig(processed_root=root))
+    ingest_path("tests/fixtures/test_5s.mp4", MeanRGBEncoder(), VideoIngestConfig(processed_root=root, ingest_backend="siglip2"))
     search = ConfiguredSearch(root, encoder_factory=QueryEncoder)
     assert search._bundle is None and search._encoder is None
     client = TestClient(create_app(configured_search=search))

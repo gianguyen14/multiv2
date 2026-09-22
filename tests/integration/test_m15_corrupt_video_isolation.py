@@ -11,7 +11,7 @@ def test_corrupt_video_does_not_destroy_valid_dataset_ingestion(tmp_path):
     (corpus / "corrupt_video.mp4").write_bytes(b"not an mp4")
     create_video(corpus / "valid_video_B.mp4", "blue_object")
     output = tmp_path / "processed"
-    report = ingest_path(corpus, MeanRGBEncoder(), VideoIngestConfig(processed_root=output))
+    report = ingest_path(corpus, MeanRGBEncoder(), VideoIngestConfig(processed_root=output, ingest_backend="siglip2"))
     assert report["videos_succeeded"] == 2 and report["videos_failed"] == 1
     assert "VideoDecodeError" in report["failures"][0]["error"]
     assert (output / "corrupt_video/manifest.json").is_file()

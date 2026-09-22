@@ -43,9 +43,10 @@ def ingest_path(input_path, encoder, config, limit=None, force=False, fail_fast=
             if fail_fast:
                 break
     identity = pipeline._encoder_identity()
-    if config.ingest_backend == "qwen3_vl":
-        if identity.get("backend") != "qwen3_vl" or int(identity.get("embedding_dim", 0)) != 1024:
-            raise RuntimeError("Qwen ingest requires qwen3_vl backend with 1024-D embeddings")
+    if config.ingest_backend == "qwen3_vl" and identity.get("backend") != "qwen3_vl":
+        raise RuntimeError("Qwen ingest requires qwen3_vl backend")
+    if config.ingest_backend == "qwen3_vl" and int(identity.get("embedding_dim", 0)) != 1024:
+        raise RuntimeError("Qwen ingest requires qwen3_vl backend with 1024-D embeddings")
     manifests = [manifest for manifest in pipeline.store.manifests()
         if manifest.status in {"embeddings_ready", "indexed"}
         and manifest.completed_stage == "embeddings"

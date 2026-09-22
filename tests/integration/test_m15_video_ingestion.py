@@ -22,7 +22,7 @@ class FakeEncoder:
 
 
 def test_m15_ingestion_resume_index_and_resolution(tmp_path):
-    config = VideoIngestConfig(processed_root=tmp_path, sample_interval_seconds=1.0)
+    config = VideoIngestConfig(processed_root=tmp_path, sample_interval_seconds=1.0, ingest_backend="siglip2")
     first = ingest_path("tests/fixtures/test_5s.mp4", FakeEncoder(), config)
     assert first["videos_succeeded"] == 1
     assert first["indexed_frames"] == 5

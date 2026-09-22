@@ -48,7 +48,7 @@ class FakeASR:
 
 
 def ingest(video, root):
-    VideoIngestionPipeline(MeanRGBEncoder(), VideoIngestConfig(processed_root=root)).ingest_video(video)
+    VideoIngestionPipeline(MeanRGBEncoder(), VideoIngestConfig(processed_root=root, ingest_backend="siglip2")).ingest_video(video)
 
 
 def test_ocr_asr_persistence_mapping_and_resume(tmp_path):
