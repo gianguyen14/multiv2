@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 
 from backend.app.runtime.ingest_policy import initial_batch_size, kernel_smoke, probe_gpu, select_dtype
+from backend.app.embeddings.identity import instruction_sha256, semantic_encoder_identity
 
 QWEN_INGEST_DIM = 1024
 
@@ -57,21 +58,22 @@ class QwenImageIngestEncoder:
         )
 
     def identity(self):
-        return {
+        return semantic_encoder_identity({
             "backend": "qwen3_vl",
-            "provider": "qwen3_vl",
             "model_name": "Qwen/Qwen3-VL-Embedding-2B",
-            "model_dir": str(self._embedder.model_dir),
+            "revision": (self._embedder.model_dir / "REVISION").read_text().strip() if (self._embedder.model_dir / "REVISION").is_file() else None,
+            "instruction": self._embedder.instruction,
+            "instruction_sha256": instruction_sha256(self._embedder.instruction),
             "embedding_dim": QWEN_INGEST_DIM,
             "normalization": "l2",
-            "dtype": self.dtype,
             "output_dtype": "float32",
             "contract_version": "qwen3-vl-image-ingest-v1",
-            "selected_batch_size": self.batch_size,
-        }
+        })
 
     def get_model_info(self):
-        return {**self.identity(), "device": self.device, "gpu": self.capability.to_dict(), "effective_batch_size": self.effective_batch_size}
+        return {**self.identity(), "model_dir": str(self._embedder.model_dir), "dtype": self.dtype,
+            "device": self.device, "gpu": self.capability.to_dict(),
+            "selected_batch_size": self.batch_size, "effective_batch_size": self.effective_batch_size}
 
     def load_model(self):
         """Load model weights before corpus decode; fail early on runtime incompatibility."""

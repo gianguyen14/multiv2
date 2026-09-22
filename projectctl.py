@@ -8,6 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from backend.app.embeddings.identity import semantic_encoder_identity
+
 ROOT = Path(__file__).resolve().parent
 
 
@@ -523,11 +525,17 @@ def command_index(args):
     if not manifests:
         raise RuntimeError("no completed video manifests found")
     identities = [dict(manifest.encoder_identity or {}) for manifest in manifests]
-    canonical = identities[0]
+    try:
+        canonical = semantic_encoder_identity(identities[0])
+    except ValueError as exc:
+        raise RuntimeError("cannot publish index: manifests lack encoder identity") from exc
+    if canonical.get("backend") == "qwen3_vl":
+        canonical = semantic_encoder_identity(identities[0], backend_override="qwen3_vl")
     if not canonical.get("backend") or not canonical.get("embedding_dim"):
         raise RuntimeError("cannot publish index: manifests lack encoder identity")
-    if any(identity != canonical for identity in identities[1:]):
-        raise RuntimeError("cannot publish index: manifests contain mixed encoder identities")
+    semantic_identities = [semantic_encoder_identity(identity) for identity in identities]
+    if any(identity != canonical for identity in semantic_identities[1:]):
+        raise RuntimeError("cannot publish index: manifests contain mixed semantic encoder identities")
     if canonical.get("backend") == "qwen3_vl" and int(canonical["embedding_dim"]) != 1024:
         raise RuntimeError("cannot publish Qwen index: expected 1024-D embeddings")
     from backend.app.video.frame_index import build_frame_index

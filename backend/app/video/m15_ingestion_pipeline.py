@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 
 from backend.app.config.video_ingest_config import VideoIngestConfig
+from backend.app.embeddings.identity import semantic_encoder_identity
 from backend.app.shot_detection.base import get_shot_detector
 from backend.app.video.frame_dedup import filter_near_duplicate_frames
 from backend.app.video.frame_id_policy import FrameIdPolicy
@@ -35,6 +36,8 @@ class VideoIngestionPipeline:
         identity = dict(identity)
         if "embedding_dim" not in identity:
             identity["embedding_dim"] = self.encoder.embedding_dim
+        if identity.get("backend") == "qwen3_vl":
+            identity = semantic_encoder_identity(identity)
         return identity
 
     def ingest_video(self, path, force=False):
