@@ -279,7 +279,9 @@ def ingest_report(args):
     qwen_dtype = getattr(args, "qwen_dtype", None) or os.getenv("QWEN_DTYPE", "auto").strip().lower()
     config = VideoIngestConfig(processed_root=Path(args.processed_root), device=device,
         embed_batch_size=batch_size, index_type=args.index_type, ingest_backend=backend,
-        gpu_strict=gpu_strict, qwen_dtype=qwen_dtype)
+        gpu_strict=gpu_strict, qwen_dtype=qwen_dtype,
+        qwen_batch_min=int(os.getenv("GPU_BATCH_MIN", "1")),
+        qwen_batch_max=int(os.getenv("GPU_BATCH_MAX", "32")))
     preflight = resource_preflight(args.path, config.processed_root)
     models = model_inventory(args.whisper_model)
     preflight["visual"] = {"runtime_ready": _module("transformers") and _module("torch"),
@@ -485,6 +487,14 @@ def command_index(args):
     manifests = list(__import__("backend.app.video.frame_store", fromlist=["FrameStore"]).FrameStore(root).manifests())
     if not manifests:
         raise RuntimeError("no completed video manifests found")
+    identities = [dict(manifest.encoder_identity or {}) for manifest in manifests]
+    canonical = identities[0]
+    if not canonical.get("backend") or not canonical.get("embedding_dim"):
+        raise RuntimeError("cannot publish index: manifests lack encoder identity")
+    if any(identity != canonical for identity in identities[1:]):
+        raise RuntimeError("cannot publish index: manifests contain mixed encoder identities")
+    if canonical.get("backend") == "qwen3_vl" and int(canonical["embedding_dim"]) != 1024:
+        raise RuntimeError("cannot publish Qwen index: expected 1024-D embeddings")
     from backend.app.video.frame_index import build_frame_index
     bundle = build_frame_index(__import__("backend.app.video.frame_store", fromlist=["FrameStore"]).FrameStore(root),
         manifests, Path(root) / "index", manifests[0].embedding_dim, args.index_type)

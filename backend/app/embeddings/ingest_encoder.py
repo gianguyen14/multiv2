@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
-from backend.app.runtime.ingest_policy import kernel_smoke, probe_gpu, select_dtype
+from backend.app.runtime.ingest_policy import initial_batch_size, kernel_smoke, probe_gpu, select_dtype
 
 QWEN_INGEST_DIM = 1024
 
@@ -27,7 +27,7 @@ class QwenImageIngestEncoder:
 
     embedding_dim = QWEN_INGEST_DIM
 
-    def __init__(self, model_dir=None, *, device="auto", dtype="auto", batch_size=None, strict_gpu=False):
+    def __init__(self, model_dir=None, *, device="auto", dtype="auto", batch_size=None, strict_gpu=False, batch_min=1, batch_max=32):
         from backend.app.embeddings.qwen3_vl import Qwen3VlLocalEmbedder
 
         self.model_dir = Path(model_dir) if model_dir else None
@@ -39,6 +39,15 @@ class QwenImageIngestEncoder:
         self.device = f"cuda:{self.capability.index}" if self.capability.available else "cpu"
         self.dtype = select_dtype(dtype, self.capability)
         self.batch_size = int(batch_size) if batch_size else None
+        self.batch_min = int(batch_min)
+        self.batch_max = int(batch_max)
+        if self.batch_min < 1 or self.batch_max < self.batch_min:
+            raise ValueError("invalid Qwen batch bounds")
+        if self.batch_size is None:
+            self.batch_size = initial_batch_size(self.capability, self.batch_min, self.batch_max)
+        elif self.batch_size < self.batch_min or self.batch_size > self.batch_max:
+            raise ValueError("explicit Qwen batch size is outside configured bounds")
+        self.effective_batch_size = self.batch_size
         self._embedder = Qwen3VlLocalEmbedder(
             model_dir=model_dir,
             max_length=8192,
@@ -58,10 +67,11 @@ class QwenImageIngestEncoder:
             "dtype": self.dtype,
             "output_dtype": "float32",
             "contract_version": "qwen3-vl-image-ingest-v1",
+            "selected_batch_size": self.batch_size,
         }
 
     def get_model_info(self):
-        return {**self.identity(), "device": self.device, "gpu": self.capability.to_dict()}
+        return {**self.identity(), "device": self.device, "gpu": self.capability.to_dict(), "effective_batch_size": self.effective_batch_size}
 
     def encode_image(self, images, batch_size=None, normalize=True):
         if not normalize:
@@ -72,7 +82,9 @@ class QwenImageIngestEncoder:
             return np.zeros((0, QWEN_INGEST_DIM), dtype=np.float32)
         values = []
         size = int(batch_size or self.batch_size or 1)
-        for offset in range(0, len(images), size):
+        self.effective_batch_size = size
+        offset = 0
+        while offset < len(images):
             batch = images[offset:offset + size]
             try:
                 encoded = self._embedder._ensure_loaded() or None
@@ -91,11 +103,13 @@ class QwenImageIngestEncoder:
                         raise RuntimeError("invalid Qwen image embedding norm")
                     vectors.append((vector / norm).astype(np.float32, copy=False))
                 values.extend(vectors)
+                offset += len(batch)
             except RuntimeError as exc:
                 if "out of memory" in str(exc).lower() and size > 1 and self.device.startswith("cuda"):
                     if self.batch_size and size == 1:
                         raise
                     size = max(1, size // 2)
+                    self.effective_batch_size = size
                     import torch
                     torch.cuda.empty_cache()
                     continue
@@ -124,5 +138,7 @@ def create_ingest_encoder(config, model_dir=None):
             dtype=config.qwen_dtype,
             batch_size=config.embed_batch_size,
             strict_gpu=config.gpu_strict,
+            batch_min=config.qwen_batch_min,
+            batch_max=config.qwen_batch_max,
         )
     raise ValueError(f"unsupported ingest backend: {backend!r}")

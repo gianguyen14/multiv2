@@ -98,7 +98,8 @@ def main():
     config = VideoIngestConfig(processed_root=Path(args.output), sample_interval_seconds=args.sample_interval,
         embed_batch_size=args.batch_size, device=args.device, resume=args.resume,
         ingest_backend=args.ingest_backend, gpu_strict=args.gpu_strict,
-        qwen_dtype=args.qwen_dtype)
+        qwen_dtype=args.qwen_dtype, qwen_batch_min=int(os.getenv("GPU_BATCH_MIN", "1")),
+        qwen_batch_max=int(os.getenv("GPU_BATCH_MAX", "32")))
     encoder = create_ingest_encoder(config)
     report = ingest_path(args.input, encoder, config, args.limit, args.force, args.fail_fast)
     print(json.dumps(report, indent=2, sort_keys=True))
