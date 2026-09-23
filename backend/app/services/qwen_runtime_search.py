@@ -684,16 +684,18 @@ class QwenRuntimeSearch:
             **count_metrics,
         }
         if query_plan and query_plan.intent in {"count", "temporal_count"}:
-            # Detector is an execution modality even when temporal counting is
-            # intentionally refused before any frame inference.
+            # Actual detector execution is recorded only after CountingService
+            # successfully invokes a detector. Temporal tracking_required is a
+            # capability/status requirement, not an executed modality.
             self.last_query_metrics["detector_invoked"] = bool(
                 count_metrics.get("detector_invoked")
             )
-            if "detector" not in self.last_query_metrics["executed_modalities"]:
+            if self.last_query_metrics["detector_invoked"] and "detector" not in self.last_query_metrics["executed_modalities"]:
                 self.last_query_metrics["executed_modalities"].append("detector")
             if query_plan.intent == "temporal_count":
-                if "tracking_required" not in self.last_query_metrics["executed_modalities"]:
-                    self.last_query_metrics["executed_modalities"].append("tracking_required")
+                self.last_query_metrics["tracking"] = count_metrics.get(
+                    "tracking", {"supported": False, "status": "tracking_required"}
+                )
 
         self.last_query_plan = query_plan
         return results

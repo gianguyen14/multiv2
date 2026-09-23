@@ -801,6 +801,7 @@ def test_count_query_refine_false_uses_cleaned_visual_query(runtime, tmp_path):
 def test_modalities_static_count_disables_text_evidence(runtime, tmp_path):
     model_dir = _touch_model(tmp_path / "model")
     provider = _search(runtime, model_dir, "t0")
+    provider._get_counting_service = lambda: _SuccessfulTelemetryCounting()
     provider.handle({"query_type": "kis", "query": "Có bao nhiêu xe máy ở ngã tư?", "top_k": 2})
     m = provider.last_query_metrics
     assert m["executed_modalities"] == ["visual", "detector"]
@@ -812,6 +813,7 @@ def test_modalities_static_count_disables_text_evidence(runtime, tmp_path):
 def test_modalities_count_with_exact_text_enables_ocr_only(runtime, tmp_path):
     model_dir = _touch_model(tmp_path / "model")
     provider = _search(runtime, model_dir, "t0")
+    provider._get_counting_service = lambda: _SuccessfulTelemetryCounting()
     provider.handle({"query_type": "kis", "query": "Có bao nhiêu xe cạnh biển ghi 'LOTTERIA'?", "top_k": 2})
     m = provider.last_query_metrics
     assert m["executed_modalities"] == ["visual", "ocr", "detector"]
@@ -833,12 +835,8 @@ def test_modalities_ordinary_retrieval_preserves_visual_ocr_asr(runtime, tmp_pat
 def test_modalities_count_refine_false_are_deterministic(runtime, tmp_path):
     model_dir = _touch_model(tmp_path / "model")
     provider = _search(runtime, model_dir, "t0")
-    provider.handle({
-        "query_type": "kis",
-        "query": "Có bao nhiêu xe cạnh biển ghi 'LOTTERIA'?",
-        "query_refine": False,
-        "top_k": 2,
-    })
+    provider._get_counting_service = lambda: _SuccessfulTelemetryCounting()
+    provider.handle({"query_type": "kis", "query": "Có bao nhiêu xe cạnh biển ghi 'LOTTERIA'?", "query_refine": False, "top_k": 2})
     assert provider.last_query_metrics["executed_modalities"] == ["visual", "ocr", "detector"]
 
 
@@ -851,8 +849,10 @@ def test_modalities_temporal_count_requires_tracking_without_detector(runtime, t
         "top_k": 2,
     })
     m = provider.last_query_metrics
-    assert m["executed_modalities"] == ["visual", "detector", "tracking_required"]
+    assert m["planned_modalities"] == ["visual", "detector", "tracking_required"]
+    assert m["executed_modalities"] == ["visual"]
     assert m["detector_invoked"] is False
+    assert m["tracking"]["status"] == "tracking_required"
     assert m["ocr_invoked"] is False
     assert m["asr_invoked"] is False
 
@@ -860,8 +860,41 @@ def test_modalities_temporal_count_requires_tracking_without_detector(runtime, t
 def test_modalities_count_with_speech_constraint_enables_asr(runtime, tmp_path):
     model_dir = _touch_model(tmp_path / "model")
     provider = _search(runtime, model_dir, "t0")
+    provider._get_counting_service = lambda: _SuccessfulTelemetryCounting()
     provider.handle({"query_type": "kis", "query": "Có bao nhiêu người khi MC nói về bão số 3?", "top_k": 2})
     m = provider.last_query_metrics
     assert m["executed_modalities"] == ["visual", "asr", "detector"]
     assert m["ocr_invoked"] is False
     assert m["asr_invoked"] is True
+
+
+def test_metrics_detector_unavailable_excludes_detector(runtime, tmp_path):
+    model_dir = _touch_model(tmp_path / "model")
+    provider = _search(runtime, model_dir, "t0")
+    class Unavailable:
+        def __call__(self, *args, **kwargs):
+            raise RuntimeError("detector unavailable")
+    provider._counting_service = __import__("backend.app.services.counting_service", fromlist=["CountingService"]).CountingService(
+        runtime[0], detector_factory=Unavailable()
+    )
+    provider.handle({"query_type": "kis", "query": "Có bao nhiêu xe máy ở ngã tư?", "top_k": 2})
+    m = provider.last_query_metrics
+    assert m["planned_modalities"] == ["visual", "detector"]
+    assert m["executed_modalities"] == ["visual"]
+    assert m["detector_invoked"] is False
+    assert m["detector_status"] == "unavailable"
+
+
+class _SuccessfulTelemetryCounting:
+    def count(self, plan, rows):
+        for row in rows:
+            row["detector_status"] = "ok"
+        return rows, {
+            "intent": plan.intent,
+            "detector_invoked": True,
+            "detector_status": "ok",
+            "detector_backend": "test",
+            "detector_candidates": len(rows),
+            "detector_cache_hits": 0,
+            "detector_ms": 0.0,
+        }
