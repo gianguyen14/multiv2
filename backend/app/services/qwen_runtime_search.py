@@ -398,8 +398,8 @@ class QwenRuntimeSearch:
         """
         self._last_search_execution = {
             "executed_modalities": (["visual"] if use_visual else [])
-            + (["ocr"] if use_ocr else [])
-            + (["asr"] if use_asr else []),
+            + (["ocr"] if use_ocr and self.enable_ocr else [])
+            + (["asr"] if use_asr and self.enable_asr else []),
             "visual_invoked": bool(use_visual),
             "ocr_invoked": bool(use_ocr and self.enable_ocr),
             "asr_invoked": bool(use_asr and self.enable_asr),
