@@ -6,6 +6,7 @@ services:
       dockerfile: ${DOCKERFILE:-Dockerfile}
       args:
         INSTALL_YOLO: ${INSTALL_YOLO:-false}
+        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-}
     container_name: aic-retrieval
     restart: unless-stopped
     ports:

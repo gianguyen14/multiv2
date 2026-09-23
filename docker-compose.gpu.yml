@@ -5,7 +5,7 @@ services:
       context: .
       dockerfile: ${DOCKERFILE:-Dockerfile}
       args:
-        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}
+        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu128}
         INSTALL_YOLO: ${INSTALL_YOLO:-false}
     container_name: aic-retrieval-gpu
     restart: unless-stopped
