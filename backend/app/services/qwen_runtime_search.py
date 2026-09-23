@@ -582,8 +582,16 @@ class QwenRuntimeSearch:
             else:
                 query_plan = None
             self.last_query_plan = query_plan
-            results = self.search_single(retrieval_query if query_refine else query,
-                                         top_k=top_k, lexical_query=query)
+            # Count routing uses the cleaned deterministic visual query regardless
+            # of whether optional LLM refinement is enabled. Only plain retrieve
+            # with no refinement falls back to the raw query string.
+            if query_plan and query_plan.intent in {"count", "temporal_count"}:
+                _search_q = retrieval_query  # always the cleaned deterministic query
+            elif query_refine:
+                _search_q = retrieval_query  # refined query
+            else:
+                _search_q = query  # raw query (no refinement requested)
+            results = self.search_single(_search_q, top_k=top_k, lexical_query=query)
 
             if query_plan and query_plan.intent in {"count", "temporal_count"}:
                 results, count_metrics = self._get_counting_service().count(query_plan, results)

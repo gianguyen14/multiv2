@@ -155,8 +155,8 @@ def test_temporal_count_reports_tracking_required(tmp_path):
 
 # ── Items 2 & 3: multi-target and vehicle group ───────────────────────────────
 
-def test_multi_target_unsupported_returns_explicit_status(tmp_path):
-    """Incompatible multi-target (cat + dog share no semantic group) -> multi_target_not_supported."""
+def test_multi_target_arbitrary_coco_classes_supported(tmp_path):
+    """Any combination of valid COCO labels is supported — cross-group gates removed (Item 2)."""
     from backend.app.services.counting_service import CountingService
     from backend.app.services.query_refiner import QueryPlan
     from backend.app.vision.object_detector import Detection
@@ -173,12 +173,53 @@ def test_multi_target_unsupported_returns_explicit_status(tmp_path):
 
     class _Det:
         backend = "yolo"; model_identity = "sha256:test"; device = "cpu"; confidence = 0.25
-        def detect(self, p): return [Detection("cat", 15, 0.9, (0, 0, 1, 1))]
+        def detect(self, p):
+            return [Detection("cat", 15, 0.9, (0, 0, 1, 1)),
+                    Detection("dog", 16, 0.91, (0, 0, 1, 1))]
 
     service = CountingService(tmp_path, detector=_Det())
     output, metrics = service.count(plan, rows)
-    assert metrics["detector_status"] == "multi_target_not_supported"
-    assert output[0]["detector_status"] == "multi_target_not_supported"
+    # cat + dog both counted — no multi_target_not_supported
+    assert metrics["detector_status"] == "ok"
+    assert output[0]["detector_count"] == 2
+    per = output[0]["per_target_counts"]
+    assert per.get("cat") == 1
+    assert per.get("dog") == 1
+
+
+def test_multi_target_person_and_car(tmp_path):
+    """person + car (cross-group) counted together in one pass (Item 2)."""
+    from backend.app.services.counting_service import CountingService
+    from backend.app.services.query_refiner import QueryPlan
+    from backend.app.vision.object_detector import Detection
+
+    plan = QueryPlan(
+        task_type="qa", original_query="bao nhiêu người và xe ô tô",
+        intent="count", requires_detector=True, detector_targets=["person", "car"],
+    )
+    root = tmp_path
+    rows = [{"video_id": "VID", "source_frame_index_zero_based": 0, "frame_id": 0}]
+    frame = root / "VID" / "frames" / "000000000.jpg"
+    frame.parent.mkdir(parents=True, exist_ok=True)
+    frame.write_bytes(b"fixture")
+    call_count = []
+
+    class _Det:
+        backend = "yolo"; model_identity = "sha256:test"; device = "cpu"; confidence = 0.25
+        def detect(self, p):
+            call_count.append(1)
+            return [Detection("person", 0, 0.95, (0,0,1,1)),
+                    Detection("car", 2, 0.92, (0,0,1,1)),
+                    Detection("car", 2, 0.85, (1,1,2,2))]
+
+    service = CountingService(tmp_path, detector=_Det(), top_n=1)
+    output, metrics = service.count(plan, rows)
+    # Single detect() call, both classes counted
+    assert len(call_count) == 1
+    assert metrics["detector_status"] == "ok"
+    assert output[0]["detector_count"] == 3
+    assert output[0]["per_target_counts"]["person"] == 1
+    assert output[0]["per_target_counts"]["car"] == 2
 
 
 def test_multi_target_per_target_counts(tmp_path):
@@ -337,3 +378,43 @@ def test_xe_vehicle_target_routes_and_expands():
     expanded, err = CountingService._resolve_targets(["vehicle"])
     assert err is None
     assert set(expanded) == set(SEMANTIC_TARGET_GROUPS["vehicle"])
+
+
+def test_authoritative_total_count_is_single_frame_not_sum(tmp_path):
+    """3 near-duplicate candidates each with 2 motorcycles -> total_count==2, NOT 6 (Item 1)."""
+    from backend.app.services.counting_service import CountingService
+    from backend.app.services.query_refiner import QueryPlan
+    from backend.app.vision.object_detector import Detection
+
+    root = tmp_path
+    rows = []
+    for idx in range(3):
+        frame = root / "VID" / "frames" / f"{idx:09d}.jpg"
+        frame.parent.mkdir(parents=True, exist_ok=True)
+        frame.write_bytes(b"fixture")
+        rows.append({"video_id": "VID", "source_frame_index_zero_based": idx, "frame_id": idx, "frame_uid": f"VID:{idx:09d}"})
+
+    class _Det:
+        backend = "yolo"; model_identity = "sha256:test"; device = "cpu"; confidence = 0.25
+        def detect(self, p):
+            # Each frame shows 2 motorcycles (near-duplicate scene)
+            return [Detection("motorcycle", 3, 0.9, (0,0,1,1)),
+                    Detection("motorcycle", 3, 0.88, (1,1,2,2))]
+
+    plan = QueryPlan(
+        task_type="qa", original_query="Có bao nhiêu xe máy?",
+        intent="count", requires_detector=True, detector_targets=["motorcycle"],
+    )
+    service = CountingService(tmp_path, detector=_Det(), top_n=3)
+    output, metrics = service.count(plan, rows)
+
+    # Authoritative: best frame = 2, NOT candidate sum = 6
+    assert metrics["detector_status"] == "ok"
+    assert metrics["total_count"] == 2, f"Expected 2, got {metrics['total_count']}"
+    assert metrics["per_target_counts"]["motorcycle"] == 2
+    # Diagnostic sum exists and is correct
+    assert metrics["diagnostic_candidate_sum_count"] == 6
+    # QA answer on first row is from first successful frame
+    assert output[0]["answer"] == "2"
+    # answer_frame_uid is set
+    assert metrics["answer_frame_uid"] is not None

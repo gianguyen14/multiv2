@@ -40,9 +40,8 @@ _COCO_LABELS = (
 TARGET_LABELS = {label: {label} for label in _COCO_LABELS}
 
 # Semantic target groups: a group key expands to all member COCO labels.
-# All members within a group are treated as compatible (single detector pass,
-# counts summed). Classes from different incompatible groups trigger
-# multi_target_not_supported.
+# Groups are expansion aliases only; arbitrary supported COCO targets may be
+# combined and are counted in the same detector pass.
 SEMANTIC_TARGET_GROUPS: dict[str, list[str]] = {
     "vehicle": ["bicycle", "car", "motorcycle", "bus", "truck"],
     "road_vehicle": ["car", "motorcycle", "bus", "truck"],
@@ -220,19 +219,9 @@ class CountingService:
 
         expanded = list(dict.fromkeys(expanded))  # deduplicate, preserve order
 
-        # Check cross-group compatibility: all expanded labels must share at
-        # least one common group (or belong to a single class).
-        if len(expanded) > 1:
-            # Collect the set of groups each class belongs to
-            group_sets = [frozenset(
-                g for g, members in SEMANTIC_TARGET_GROUPS.items() if cls in members
-            ) for cls in expanded]
-            # Classes without any group membership get an empty frozenset
-            # Find the intersection of all group sets
-            shared_groups = group_sets[0].intersection(*group_sets[1:]) if group_sets else frozenset()
-            if not shared_groups:
-                return [], "multi_target_not_supported"
-
+        # YOLO can detect any combination of COCO classes in a single inference
+        # pass. Cross-group compatibility gates are NOT applied; reject only
+        # unknown/non-COCO labels (already handled above).
         return expanded, None
 
     def count(self, plan: QueryPlan, candidates: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -319,13 +308,23 @@ class CountingService:
                 row["detector_error"] = type(exc).__name__
         metrics["detector_ms"] = round((time.perf_counter() - start) * 1000.0, 2)
         metrics["detector_status"] = "ok" if first_answer_set else "unavailable"
-        # Aggregate per-target counts across top candidate
-        if first_answer_set:
-            agg: dict[str, int] = {lbl: 0 for lbl in expanded_labels}
-            for row in rows[:max_rows]:
-                if row.get("detector_status") == "ok":
-                    for lbl, cnt in row.get("per_target_counts", {}).items():
-                        agg[lbl] = agg.get(lbl, 0) + cnt
-            metrics["per_target_counts"] = agg
-            metrics["total_count"] = sum(agg.values())
+
+        # Authoritative answer comes from ONE source: the highest-ranked candidate
+        # that was successfully processed. Summing across near-duplicate frames
+        # would overcount the same scene.
+        auth_row: dict | None = next(
+            (r for r in rows[:max_rows] if r.get("detector_status") == "ok"), None
+        )
+        if auth_row is not None:
+            metrics["per_target_counts"] = dict(auth_row.get("per_target_counts", {}))
+            metrics["total_count"] = int(auth_row.get("detector_count", 0))
+            metrics["answer_frame_uid"] = auth_row.get("frame_uid")
+            # Diagnostic sums across all selected candidates (do not confuse with QA answer)
+            diag_sum: dict[str, int] = {lbl: 0 for lbl in expanded_labels}
+            for r in rows[:max_rows]:
+                if r.get("detector_status") == "ok":
+                    for lbl, cnt in r.get("per_target_counts", {}).items():
+                        diag_sum[lbl] = diag_sum.get(lbl, 0) + cnt
+            metrics["diagnostic_candidate_per_target_sum"] = diag_sum
+            metrics["diagnostic_candidate_sum_count"] = sum(diag_sum.values())
         return rows, metrics

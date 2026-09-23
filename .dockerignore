@@ -76,7 +76,10 @@ AIC2025-VideoRetrieval-float97/
 AI-Challenge-2026-Video-Retrieval-Panel/
 liệu/
 tools/
-scripts/
+# Allow only the required runtime validator from scripts/
+scripts/*
+!scripts/
+!scripts/validate_gpu_ingest.py
 
 # Frontend development extras
 node_modules/

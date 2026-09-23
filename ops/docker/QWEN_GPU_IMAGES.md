@@ -1,82 +1,83 @@
-# Qwen GPU Docker images
+# AIC GPU Image Builds
 
-Source freeze: `568e1256b5e16ecfaa66f44ac0f5478286c2e7`.
+Two CUDA profiles are produced by `ops/docker/build-gpu-qwen.sh`:
 
-The Dockerfile is a single application image definition with an explicit PyTorch CUDA wheel index. Build variants are distinguished by dependency index:
+- V100/Volta: CUDA 11.8, PyTorch 2.7.1+cu118, torchvision 0.22.1+cu118, FP16 policy.
+- Modern GPU (Ampere/Ada/Hopper): CUDA 12.8, PyTorch 2.7.1+cu128, torchvision 0.22.1+cu128, auto BF16/FP16 policy.
 
-- V100/Volta: CUDA 11.8 PyTorch wheels, FP16 policy, tag `gpu-v100-568e125`.
-- Modern GPU: CUDA 12.4 PyTorch wheels, auto BF16/FP16 policy, tag `gpu-modern-568e125`.
+Both profiles build with `INSTALL_YOLO=true` (Ultralytics included, weights external).
 
-The build host used for this audit has no NVIDIA GPU, so both GPU runtime validations are `PENDING_HARDWARE_VALIDATION`. Docker build/push must not be described as GPU hardware validation.
+## Tags
+
+Tags are derived from the actual packaging HEAD SHA at build time:
+
+    gianguyen14/aic-retrieval:gpu-v100-<7-char-SHA>
+    gianguyen14/aic-retrieval:gpu-modern-<7-char-SHA>
+
+No frozen feature SHA is required; the script works from any commit.
 
 ## Build
 
-From the frozen branch and required SHA:
-
 ```bash
+cd /path/to/multiv2
 bash ops/docker/build-gpu-qwen.sh
 ```
 
-The script fails before build if `git rev-parse HEAD` is not the required source SHA.
-
-## CPU/import smoke
+Override image repository:
 
 ```bash
-for image in \
-  gianguyen14/aic-retrieval:gpu-v100-568e125 \
-  gianguyen14/aic-retrieval:gpu-modern-568e125; do
-  docker run --rm --entrypoint python "$image" --version
-  docker run --rm --entrypoint python "$image" -c \
-    'import torch,av,numpy,faiss,transformers; print(torch.__version__, torch.version.cuda); print("imports ok")'
-  docker run --rm --entrypoint python "$image" projectctl.py --help
-  docker run --rm --entrypoint python "$image" -c \
-    'from backend.app.main import app; print(app.title)'
-done
+IMAGE_REPOSITORY=myorg/aic-retrieval bash ops/docker/build-gpu-qwen.sh
 ```
 
-## Real GPU validation
+## Counting-ready images
 
-Only run on a host with NVIDIA Container Toolkit and an actual target GPU:
+Both GPU images include Ultralytics (INSTALL_YOLO=true at build time).
+COUNTING_ENABLED defaults to false; enable at runtime:
+
+    COUNTING_ENABLED=true
+    OBJECT_DETECTOR_MODEL=/models/yolo/yolo11n.pt   # external mount required
+
+## Container smoke checks
 
 ```bash
-docker run --rm --gpus all --entrypoint python \
-  gianguyen14/aic-retrieval:gpu-v100-568e125 -c \
-  'import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0)); print(torch.cuda.get_device_capability(0))'
+# Dependency integrity
+docker run --rm --entrypoint pip <IMAGE> check
+
+# PyTorch / CUDA version (V100 example)
+docker run --rm <IMAGE> python -c "
+import torch, torchvision
+assert torch.__version__ == '2.7.1+cu118'
+assert torchvision.__version__ == '0.22.1+cu118'
+assert torch.version.cuda == '11.8'
+print(torch.__version__, torchvision.__version__, torch.version.cuda)
+"
+
+# Ultralytics + adapter
+docker run --rm <IMAGE> python -c "
+import ultralytics; print(ultralytics.__version__)
+from backend.app.vision.yolo_detector import YoloDetector; print('ok')
+"
+
+# GPU validation script
+docker run --rm <IMAGE> python scripts/validate_gpu_ingest.py --help
 ```
 
-Then mount the model and a probe image:
+## External mounts required at runtime
 
-```bash
-docker run --rm --gpus all \
-  -v /workspace/models:/models:ro \
-  -v /workspace/probe.jpg:/tmp/probe.jpg:ro \
-  -e QWEN3_VL_MODEL_DIR=/models/Qwen3-VL-Embedding-2B \
-  gianguyen14/aic-retrieval:gpu-v100-568e125 \
-  python scripts/validate_gpu_ingest.py \
-    --model /models/Qwen3-VL-Embedding-2B \
-    --image /tmp/probe.jpg --device cuda:0 --dtype float16
-```
+| Host path | Container path | Purpose |
+|---|---|---|
+| DB v1 runtime | /data/runtime | FAISS index, OCR/ASR spools |
+| Qwen3-VL model | /models/Qwen3-VL-Embedding-2B | embedding weights |
+| YOLO weights | /models/yolo/ | optional detector weights |
+| Video files | /videos | raw MP4 source |
+| Video cache | /cache/videos | transcoded preview cache |
+| Detection cache | /cache/detections | YOLO result JSON cache |
 
-Do not claim V100, Blackwell, MIG, throughput, VRAM, or CUDA PASS without real execution.
+## GPU runtime validation
 
-## Runtime mounts
+Without a real NVIDIA host, GPU runtime is blocked:
 
-Do not bake model/data/video/index/cache into the image. Mount them externally:
+    GPU_RUNTIME_VALIDATION=BLOCKED_NO_GPU_HOST
 
-```text
-/models
-/data
-/videos
-/output
-```
-
-Set:
-
-```text
-INGEST_BACKEND=qwen3_vl
-GPU_STRICT=true
-QWEN3_VL_MODEL_DIR=/models/Qwen3-VL-Embedding-2B
-VIDEO_PROCESSED_ROOT=/data/processed
-```
-
-Production DB/CURRENT remains read-only and is never modified by image build or import smoke.
+Run `scripts/validate_gpu_ingest.py` on an authorized GPU host to confirm
+embedding parity before declaring GPU ready.

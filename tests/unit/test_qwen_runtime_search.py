@@ -753,3 +753,46 @@ def test_modalities_preserved_through_refine():
     refined, _ = refiner.refine("Có bao nhiêu xe máy ở đây?", task_type="kis")
     # refiner falls back to deterministic when no LLM — modalities must survive
     assert "detector" in refined.modalities
+
+
+def test_count_query_refine_false_uses_cleaned_visual_query(runtime, tmp_path):
+    """query_refine=False + count query must still use the cleaned deterministic
+    visual query for retrieval, never the raw question text (Item 3)."""
+    encoded: list[str] = []
+    model_dir = _touch_model(tmp_path / "model")
+    root, _, _ = runtime
+
+    class CapturingEncoder(StubEncoder):
+        def encode_query(self, query, dimension=None):
+            encoded.append(query)
+            return super().encode_query(query, dimension)
+
+    provider = QwenRuntimeSearch(
+        processed_root=root,
+        model_dir=model_dir,
+        encoder_factory=lambda: CapturingEncoder(4),
+    )
+
+    # Ensure refiner would raise if called
+    from backend.app.services.query_refiner import QueryRefiner
+
+    class BombRefiner(QueryRefiner):
+        def refine(self, query, **kwargs):
+            raise AssertionError("refiner must not be called for count query_refine=False")
+
+    provider._get_query_refiner = lambda: BombRefiner(cache_enabled=False)
+
+    provider.handle({
+        "query_type": "kis",
+        "query": "Có bao nhiêu xe máy ở ngã tư?",
+        "query_refine": False,
+    })
+
+    # The encoder must NOT receive the raw Vietnamese question
+    assert encoded, "encoder was never called"
+    raw_q = "Có bao nhiêu xe máy ở ngã tư?"
+    assert encoded[0] != raw_q, (
+        f"Expected cleaned visual query, got raw question: {encoded[0]!r}"
+    )
+    # Should be the deterministic cleaned visual query
+    assert "xe máy" in encoded[0], f"Expected 'xe máy' in cleaned query: {encoded[0]!r}"

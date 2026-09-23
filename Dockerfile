@@ -86,10 +86,23 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # Optional detector runtime. Weights are always supplied through /models at
 # runtime; Ultralytics is not installed in the default image.
+# INSTALL_YOLO=true is required for counting-enabled GPU images.
 RUN if [ "$INSTALL_YOLO" = "true" ]; then \
         pip freeze | grep -E '^(torch|torchvision)==' > /tmp/torch-constraints.txt && \
         pip install --no-cache-dir -c /tmp/torch-constraints.txt -r requirements/yolo.txt && \
         rm -f /tmp/torch-constraints.txt; \
+    fi
+
+# Final dependency consistency guard (also runs when YOLO is installed).
+RUN python -m pip check
+
+# Hard PyTorch/CUDA version assertion — must run AFTER Ultralytics install so
+# a dependency resolver cannot silently downgrade torch.
+# CPU-only images (no TORCH_INDEX_URL set) skip this gate.
+RUN if echo "$TORCH_INDEX_URL" | grep -q 'cu118'; then \
+        python -c "import torch, torchvision; assert torch.__version__ == '2.7.1+cu118', torch.__version__; assert torchvision.__version__ == '0.22.1+cu118', torchvision.__version__; assert torch.version.cuda == '11.8', torch.version.cuda; print('torch', torch.__version__, 'torchvision', torchvision.__version__, 'cuda', torch.version.cuda, 'OK')"; \
+    elif echo "$TORCH_INDEX_URL" | grep -q 'cu128'; then \
+        python -c "import torch, torchvision; assert torch.__version__ == '2.7.1+cu128', torch.__version__; assert torchvision.__version__ == '0.22.1+cu128', torchvision.__version__; assert torch.version.cuda == '12.8', torch.version.cuda; print('torch', torch.__version__, 'torchvision', torchvision.__version__, 'cuda', torch.version.cuda, 'OK')"; \
     fi
 
 # Copy entrypoint script and set executable permissions
@@ -100,6 +113,9 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 COPY backend backend
 COPY frontend frontend
 COPY projectctl.py .
+# Required GPU validation script — copied explicitly so .dockerignore's
+# scripts/ exclusion doesn't prevent it from being available in the image.
+COPY scripts/validate_gpu_ingest.py scripts/validate_gpu_ingest.py
 
 # Ensure app directory permissions
 RUN chown -R appuser:appuser /app
