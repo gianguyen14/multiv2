@@ -41,6 +41,7 @@ services:
       - ${YOLO_MODEL_ROOT:-./models/yolo}:/models/yolo:ro
       - ${AIC_VIDEO_ROOT:-/video/video}:/videos:ro
       - ${AIC_CACHE_ROOT:-/home/hermes/aic/cache/videos}:/cache/videos:rw
+      - ${AIC_DETECTIONS_CACHE_ROOT:-/home/hermes/aic/cache/detections}:/cache/detections:rw
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=5)\""]
       interval: 30s

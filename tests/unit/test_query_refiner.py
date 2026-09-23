@@ -513,3 +513,46 @@ def test_section5_query_refiner_test_set():
     assert "toyota" not in all_terms and "honda" not in all_terms
     assert "hà nội" not in all_terms and "sài gòn" not in all_terms
     assert not p_d.exact_strings
+
+
+# ── Item 4: modalities field ──────────────────────────────────────────────────
+
+def test_retrieve_modalities():
+    """Plain retrieve query -> modalities contains visual, ocr, asr."""
+    from backend.app.services.query_refiner import DeterministicQueryParser
+    plan = DeterministicQueryParser().parse("người đàn ông mặc áo đỏ", task_type="kis")
+    assert plan.intent == "retrieve"
+    assert "visual" in plan.modalities
+    assert "ocr" in plan.modalities
+    assert "asr" in plan.modalities
+    assert "detector" not in plan.modalities
+
+
+def test_count_modalities():
+    """Count query -> modalities is ['visual', 'detector']."""
+    from backend.app.services.query_refiner import DeterministicQueryParser
+    plan = DeterministicQueryParser().parse("Có bao nhiêu xe máy ở ngã tư?", task_type="kis")
+    assert plan.intent == "count"
+    assert plan.modalities == ["visual", "detector"]
+    assert "tracking_required" not in plan.modalities
+
+
+def test_temporal_count_modalities():
+    """Temporal count -> tracking_required in modalities."""
+    from backend.app.services.query_refiner import DeterministicQueryParser
+    plan = DeterministicQueryParser().parse(
+        "Có bao nhiêu xe đi qua giao lộ trong 5 phút?", task_type="kis"
+    )
+    assert plan.intent == "temporal_count"
+    assert "detector" in plan.modalities
+    assert "tracking_required" in plan.modalities
+
+
+def test_modalities_survive_plan_serialization():
+    """modalities survives model_dump() round-trip."""
+    from backend.app.services.query_refiner import DeterministicQueryParser, QueryPlan
+    plan = DeterministicQueryParser().parse("Có bao nhiêu xe máy?", task_type="kis")
+    dumped = plan.model_dump()
+    assert "modalities" in dumped
+    restored = QueryPlan(**dumped)
+    assert restored.modalities == plan.modalities

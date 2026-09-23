@@ -151,3 +151,189 @@ def test_temporal_count_reports_tracking_required(tmp_path):
     assert output[0]["tracking"] == {"supported": False, "status": "tracking_required"}
     assert metrics["tracking"]["supported"] is False
     assert detector.calls == []
+
+
+# ── Items 2 & 3: multi-target and vehicle group ───────────────────────────────
+
+def test_multi_target_unsupported_returns_explicit_status(tmp_path):
+    """Incompatible multi-target (cat + dog share no semantic group) -> multi_target_not_supported."""
+    from backend.app.services.counting_service import CountingService
+    from backend.app.services.query_refiner import QueryPlan
+    from backend.app.vision.object_detector import Detection
+
+    plan = QueryPlan(
+        task_type="qa", original_query="Có bao nhiêu mèo và chó?",
+        intent="count", requires_detector=True, detector_targets=["cat", "dog"],
+    )
+    root = tmp_path
+    rows = [{"video_id": "VID", "source_frame_index_zero_based": 0, "frame_id": 0}]
+    frame = root / "VID" / "frames" / "000000000.jpg"
+    frame.parent.mkdir(parents=True, exist_ok=True)
+    frame.write_bytes(b"fixture")
+
+    class _Det:
+        backend = "yolo"; model_identity = "sha256:test"; device = "cpu"; confidence = 0.25
+        def detect(self, p): return [Detection("cat", 15, 0.9, (0, 0, 1, 1))]
+
+    service = CountingService(tmp_path, detector=_Det())
+    output, metrics = service.count(plan, rows)
+    assert metrics["detector_status"] == "multi_target_not_supported"
+    assert output[0]["detector_status"] == "multi_target_not_supported"
+
+
+def test_multi_target_per_target_counts(tmp_path):
+    """Two compatible targets (car + motorcycle) -> per_target_counts populated."""
+    from backend.app.services.counting_service import CountingService
+    from backend.app.services.query_refiner import QueryPlan
+    from backend.app.vision.object_detector import Detection
+
+    root = tmp_path
+    frame = root / "VID" / "frames" / "000000000.jpg"
+    frame.parent.mkdir(parents=True, exist_ok=True)
+    frame.write_bytes(b"fixture")
+    rows = [{"video_id": "VID", "source_frame_index_zero_based": 0, "frame_id": 0}]
+
+    class _Det:
+        backend = "yolo"; model_identity = "sha256:test"; device = "cpu"; confidence = 0.25
+        calls = 0
+        def detect(self, p):
+            self.calls += 1
+            return [
+                Detection("car", 2, 0.92, (0, 0, 1, 1)),
+                Detection("motorcycle", 3, 0.88, (0, 0, 1, 1)),
+                Detection("car", 2, 0.80, (1, 1, 2, 2)),
+            ]
+
+    det = _Det()
+    plan = QueryPlan(
+        task_type="qa", original_query="Có bao nhiêu xe hơi và xe máy?",
+        intent="count", requires_detector=True, detector_targets=["car", "motorcycle"],
+    )
+    service = CountingService(tmp_path, detector=det, top_n=1)
+    output, metrics = service.count(plan, rows)
+
+    assert metrics["detector_status"] == "ok"
+    per = output[0]["per_target_counts"]
+    assert per["car"] == 2
+    assert per["motorcycle"] == 1
+    assert output[0]["detector_count"] == 3
+
+
+def test_single_detector_pass_for_multi_target(tmp_path):
+    """detect() must be called exactly once per frame even for 2 targets."""
+    from backend.app.services.counting_service import CountingService
+    from backend.app.services.query_refiner import QueryPlan
+    from backend.app.vision.object_detector import Detection
+
+    root = tmp_path
+    frame0 = root / "VID" / "frames" / "000000000.jpg"
+    frame1 = root / "VID" / "frames" / "000000001.jpg"
+    frame0.parent.mkdir(parents=True, exist_ok=True)
+    frame0.write_bytes(b"f"); frame1.write_bytes(b"f")
+    rows = [
+        {"video_id": "VID", "source_frame_index_zero_based": 0, "frame_id": 0},
+        {"video_id": "VID", "source_frame_index_zero_based": 1, "frame_id": 1},
+    ]
+
+    class _Det:
+        backend = "yolo"; model_identity = "sha256:test"; device = "cpu"; confidence = 0.25
+        calls = []
+        def detect(self, p):
+            self.calls.append(p)
+            return [Detection("car", 2, 0.9, (0, 0, 1, 1))]
+
+    det = _Det()
+    plan = QueryPlan(
+        task_type="kis", original_query="xe hơi và xe máy",
+        intent="count", requires_detector=True, detector_targets=["car", "motorcycle"],
+    )
+    service = CountingService(tmp_path, detector=det, top_n=2)
+    service.count(plan, rows)
+    # Two frames -> two calls; NOT four (2 targets × 2 frames)
+    assert len(det.calls) == 2
+
+
+def test_vehicle_group_expansion(tmp_path):
+    """target=vehicle expands to bicycle+car+motorcycle+bus+truck."""
+    from backend.app.services.counting_service import CountingService
+    from backend.app.services.query_refiner import QueryPlan
+    from backend.app.vision.object_detector import Detection
+
+    root = tmp_path
+    frame = root / "VID" / "frames" / "000000000.jpg"
+    frame.parent.mkdir(parents=True, exist_ok=True)
+    frame.write_bytes(b"fixture")
+    rows = [{"video_id": "VID", "source_frame_index_zero_based": 0, "frame_id": 0}]
+
+    class _Det:
+        backend = "yolo"; model_identity = "sha256:test"; device = "cpu"; confidence = 0.25
+        def detect(self, p):
+            return [
+                Detection("car", 2, 0.9, (0, 0, 1, 1)),
+                Detection("motorcycle", 3, 0.9, (0, 0, 1, 1)),
+                Detection("bus", 5, 0.9, (0, 0, 1, 1)),
+                Detection("person", 0, 0.95, (0, 0, 1, 1)),   # NOT in vehicle group
+            ]
+
+    plan = QueryPlan(
+        task_type="qa", original_query="Có bao nhiêu xe ở ngã tư?",
+        intent="count", requires_detector=True, detector_targets=["vehicle"],
+    )
+    service = CountingService(tmp_path, detector=_Det(), top_n=1)
+    output, metrics = service.count(plan, rows)
+
+    assert metrics["detector_status"] == "ok"
+    # car + motorcycle + bus = 3 (person excluded)
+    assert output[0]["detector_count"] == 3
+    per = output[0]["per_target_counts"]
+    assert per.get("car") == 1
+    assert per.get("motorcycle") == 1
+    assert per.get("bus") == 1
+    assert "person" not in per
+
+
+def test_vehicle_group_excludes_unrelated(tmp_path):
+    """target=vehicle never counts unrelated COCO classes."""
+    from backend.app.services.counting_service import CountingService
+    from backend.app.services.query_refiner import QueryPlan
+    from backend.app.vision.object_detector import Detection
+
+    root = tmp_path
+    frame = root / "VID" / "frames" / "000000000.jpg"
+    frame.parent.mkdir(parents=True, exist_ok=True)
+    frame.write_bytes(b"fixture")
+    rows = [{"video_id": "VID", "source_frame_index_zero_based": 0, "frame_id": 0}]
+
+    class _Det:
+        backend = "yolo"; model_identity = "sha256:test"; device = "cpu"; confidence = 0.25
+        def detect(self, p):
+            return [
+                Detection("person", 0, 0.99, (0, 0, 1, 1)),
+                Detection("dog", 16, 0.99, (0, 0, 1, 1)),
+                Detection("car", 2, 0.9, (0, 0, 1, 1)),
+            ]
+
+    plan = QueryPlan(
+        task_type="qa", original_query="xe ở đây",
+        intent="count", requires_detector=True, detector_targets=["vehicle"],
+    )
+    service = CountingService(tmp_path, detector=_Det(), top_n=1)
+    output, _ = service.count(plan, rows)
+    assert output[0]["detector_count"] == 1  # only car
+    assert output[0]["per_target_counts"].get("car") == 1
+
+
+def test_xe_vehicle_target_routes_and_expands():
+    """DeterministicQueryParser maps 'xe' query -> vehicle target; CountingService expands."""
+    from backend.app.services.query_refiner import DeterministicQueryParser
+    from backend.app.services.counting_service import CountingService, SEMANTIC_TARGET_GROUPS
+    parser = DeterministicQueryParser()
+    plan = parser.parse("Có bao nhiêu xe ở ngã tư?", task_type="kis")
+    assert plan.intent == "count"
+    # Parser must produce 'vehicle' as a target (mapped from 'xe')
+    assert "vehicle" in plan.detector_targets
+
+    # CountingService must resolve 'vehicle' without error
+    expanded, err = CountingService._resolve_targets(["vehicle"])
+    assert err is None
+    assert set(expanded) == set(SEMANTIC_TARGET_GROUPS["vehicle"])

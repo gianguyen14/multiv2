@@ -39,6 +39,22 @@ _COCO_LABELS = (
 )
 TARGET_LABELS = {label: {label} for label in _COCO_LABELS}
 
+# Semantic target groups: a group key expands to all member COCO labels.
+# All members within a group are treated as compatible (single detector pass,
+# counts summed). Classes from different incompatible groups trigger
+# multi_target_not_supported.
+SEMANTIC_TARGET_GROUPS: dict[str, list[str]] = {
+    "vehicle": ["bicycle", "car", "motorcycle", "bus", "truck"],
+    "road_vehicle": ["car", "motorcycle", "bus", "truck"],
+}
+
+# Reverse map: COCO class -> canonical group it belongs to (first group wins)
+_CLASS_TO_GROUP: dict[str, str] = {}
+for _group, _members in SEMANTIC_TARGET_GROUPS.items():
+    for _member in _members:
+        if _member not in _CLASS_TO_GROUP:
+            _CLASS_TO_GROUP[_member] = _group
+
 
 def resolve_candidate_image(processed_root: str | Path, candidate: dict[str, Any]) -> Path:
     """Resolve an indexed frame only from its owning video directory."""
@@ -182,6 +198,43 @@ class CountingService:
             logger.debug("could not write detection cache: %s", type(exc).__name__)
         return filtered, False
 
+    @staticmethod
+    def _resolve_targets(raw_targets: list[str]) -> tuple[list[str], str | None]:
+        """Expand semantic group keys and validate COCO compatibility.
+
+        Returns (expanded_labels, error_status).
+        error_status is None when the targets are valid; otherwise a
+        detector_status string explaining why counting cannot proceed.
+        """
+        if not raw_targets:
+            return [], "unsupported_target"
+
+        expanded: list[str] = []
+        for t in raw_targets:
+            if t in SEMANTIC_TARGET_GROUPS:
+                expanded.extend(SEMANTIC_TARGET_GROUPS[t])
+            elif t in TARGET_LABELS:
+                expanded.append(t)
+            else:
+                return [], "unsupported_target"
+
+        expanded = list(dict.fromkeys(expanded))  # deduplicate, preserve order
+
+        # Check cross-group compatibility: all expanded labels must share at
+        # least one common group (or belong to a single class).
+        if len(expanded) > 1:
+            # Collect the set of groups each class belongs to
+            group_sets = [frozenset(
+                g for g, members in SEMANTIC_TARGET_GROUPS.items() if cls in members
+            ) for cls in expanded]
+            # Classes without any group membership get an empty frozenset
+            # Find the intersection of all group sets
+            shared_groups = group_sets[0].intersection(*group_sets[1:]) if group_sets else frozenset()
+            if not shared_groups:
+                return [], "multi_target_not_supported"
+
+        return expanded, None
+
     def count(self, plan: QueryPlan, candidates: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         rows = [dict(row) for row in candidates]
         metrics: dict[str, Any] = {
@@ -200,9 +253,10 @@ class CountingService:
             metrics["tracking"] = capability
             return rows, metrics
 
-        targets = list(dict.fromkeys(plan.detector_targets))
-        if not plan.requires_detector or not targets or any(target not in TARGET_LABELS for target in targets):
-            status = "unsupported_target" if plan.intent == "count" else "not_requested"
+        raw_targets = list(dict.fromkeys(plan.detector_targets))
+        expanded_labels, target_error = self._resolve_targets(raw_targets)
+        if not plan.requires_detector or target_error:
+            status = target_error or ("unsupported_target" if plan.intent == "count" else "not_requested")
             for row in rows:
                 row["detector_status"] = status
             metrics["detector_status"] = status
@@ -223,8 +277,8 @@ class CountingService:
         max_rows = min(self.top_n, self.max_candidates, len(rows))
         metrics["detector_candidates"] = max_rows
         metrics["detector_invoked"] = bool(max_rows)
-        target = targets[0]
-        labels = TARGET_LABELS[target]
+        # Use the expanded label set for a single detector pass per frame
+        label_set = {lbl.casefold() for lbl in expanded_labels}
         start = time.perf_counter()
         first_answer_set = False
         for index, row in enumerate(rows):
@@ -236,11 +290,17 @@ class CountingService:
                 detections, cache_hit = self._detections(detector, row, image_path)
                 if cache_hit:
                     metrics["detector_cache_hits"] += 1
-                selected = [d for d in detections if d.label.casefold() in labels]
+                # Single pass: filter all expanded labels at once
+                selected = [d for d in detections if d.label.casefold() in label_set]
+                # Per-target breakdown
+                per_target: dict[str, int] = {}
+                for lbl in expanded_labels:
+                    per_target[lbl] = sum(1 for d in selected if d.label.casefold() == lbl.casefold())
                 row.update({
                     "intent": "count",
-                    "detector_target": target,
+                    "detector_targets": expanded_labels,
                     "detector_count": len(selected),
+                    "per_target_counts": per_target,
                     "detector_detections": [d.to_dict(self.include_boxes) for d in selected],
                     "detector_model": str(getattr(detector, "model_identity", "unknown")),
                     "detector_status": "ok",
@@ -259,4 +319,13 @@ class CountingService:
                 row["detector_error"] = type(exc).__name__
         metrics["detector_ms"] = round((time.perf_counter() - start) * 1000.0, 2)
         metrics["detector_status"] = "ok" if first_answer_set else "unavailable"
+        # Aggregate per-target counts across top candidate
+        if first_answer_set:
+            agg: dict[str, int] = {lbl: 0 for lbl in expanded_labels}
+            for row in rows[:max_rows]:
+                if row.get("detector_status") == "ok":
+                    for lbl, cnt in row.get("per_target_counts", {}).items():
+                        agg[lbl] = agg.get(lbl, 0) + cnt
+            metrics["per_target_counts"] = agg
+            metrics["total_count"] = sum(agg.values())
         return rows, metrics

@@ -63,6 +63,9 @@ class QueryPlan(BaseModel):
     requires_detector: bool = False
     requires_tracking: bool = False
     detector_targets: List[str] = Field(default_factory=list)
+    # Additive execution modalities. Older serialized entries that lack this
+    # field deserialize safely to the empty list (Field default).
+    modalities: List[str] = Field(default_factory=list)
 
     visual_queries: List[VisualQuery] = Field(default_factory=list)
     lexical_terms: List[str] = Field(default_factory=list)
@@ -137,6 +140,8 @@ OBJECT_TERMS = {
 }
 
 DETECTOR_TARGET_ALIASES = {
+    # Semantic group key — CountingService expands this to the vehicle group
+    "vehicle": "vehicle", "vehicles": "vehicle",
     "motorcycle": "motorcycle", "motorcycles": "motorcycle", "motorbike": "motorcycle",
     "motorbikes": "motorcycle", "scooter": "motorcycle", "scooters": "motorcycle",
     "mô tô": "motorcycle", "xe máy": "motorcycle", "xe tay ga": "motorcycle", "xe đạp điện": "motorcycle",
@@ -527,6 +532,11 @@ class DeterministicQueryParser:
             requires_detector=is_count and not is_temporal_count and bool(detector_targets),
             requires_tracking=is_temporal_count,
             detector_targets=detector_targets,
+            modalities=(
+                ["visual", "detector", "tracking_required"] if is_temporal_count
+                else ["visual", "detector"] if is_count
+                else ["visual", "ocr", "asr"]
+            ),
             visual_queries=visual_queries[:QUERY_REFINER_MAX_VISUAL_VARIANTS],
             lexical_terms=list(dict.fromkeys(lexical_terms)),
             exact_strings=list(dict.fromkeys(exact_strings)),
@@ -741,6 +751,7 @@ class LocalLLMQueryRefiner:
                 requires_detector=base_plan.requires_detector,
                 requires_tracking=base_plan.requires_tracking,
                 detector_targets=base_plan.detector_targets,
+                modalities=base_plan.modalities,
                 visual_queries=visual_queries[:QUERY_REFINER_MAX_VISUAL_VARIANTS],
                 lexical_terms=list(dict.fromkeys(base_plan.lexical_terms + validated.kept_vi_terms)),
                 exact_strings=base_plan.exact_strings,

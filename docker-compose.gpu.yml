@@ -46,7 +46,7 @@ services:
       TORCH_HOME: /cache/torch
       HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-1}
       TRANSFORMERS_OFFLINE: ${TRANSFORMERS_OFFLINE:-1}
-      TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}
+      TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu128}
       COMPUTE_DEVICE: cuda
       VISUAL_DEVICE: cuda
       ASR_DEVICE: cuda
@@ -58,6 +58,7 @@ services:
       - ${YOLO_MODEL_ROOT:-./models/yolo}:/models/yolo:ro
       - ${AIC_VIDEO_ROOT:-/video/video}:/videos:ro
       - ${AIC_CACHE_ROOT:-/home/hermes/aic/cache/videos}:/cache/videos:rw
+      - ${AIC_DETECTIONS_CACHE_ROOT:-/home/hermes/aic/cache/detections}:/cache/detections:rw
     deploy:
       resources:
         reservations:

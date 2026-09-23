@@ -544,7 +544,7 @@ def test_count_qa_uses_structured_detector_answer_not_remote_synthesizer(runtime
     })
 
     assert results[0]["intent"] == "count"
-    assert results[0]["detector_target"] == "motorcycle"
+    assert results[0]["detector_targets"] == ["motorcycle"]
     assert results[0]["detector_count"] == 1
     assert results[0]["answer"] == "1"
     assert detector.calls == 2
@@ -675,3 +675,81 @@ def test_siglip_backend_refuses_qwen_index(tmp_path):
     assert "SEARCH_BACKEND" in ready["reason"]
     with pytest.raises(RuntimeError, match="Qwen3-VL embeddings"):
         provider._initialize()
+
+
+def test_count_query_never_calls_refiner(runtime, tmp_path):
+    """Refiner must NOT be invoked for count/temporal_count queries (Item 1)."""
+    from backend.app.services.query_refiner import QueryRefiner
+
+    class BombRefiner(QueryRefiner):
+        def refine(self, query, **kwargs):
+            raise AssertionError(
+                "QueryRefiner.refine() must not be called for count queries"
+            )
+
+    from backend.app.services.counting_service import CountingService
+    from backend.app.vision.object_detector import Detection
+
+    root = tmp_path / "runtime"
+    root.mkdir(exist_ok=True)
+    frame = root / "VID" / "frames" / "000000000.jpg"
+    frame.parent.mkdir(parents=True)
+    frame.write_bytes(b"fixture")
+    model_dir = tmp_path / "model"
+    (model_dir / "scripts").mkdir(parents=True)
+    (model_dir / "model.safetensors").write_bytes(b"x")
+    (model_dir / "config.json").write_text("{}")
+    (model_dir / "scripts" / "qwen3_vl_embedding.py").write_text("# stub")
+
+    class _Det:
+        backend = "yolo"; model_identity = "sha256:test"; device = "cpu"; confidence = 0.25
+        def detect(self, p): return [Detection("motorcycle", 3, 0.9, (0, 0, 1, 1))]
+
+    provider = QwenRuntimeSearch(
+        processed_root=root,
+        model_dir=model_dir,
+        encoder_factory=lambda: StubEncoder(4),
+    )
+    provider._get_query_refiner = lambda: BombRefiner(cache_enabled=False)
+    provider._counting_service = CountingService(root, detector=_Det(), top_n=1)
+
+    # A count query with query_refine=True — refiner must be silently skipped
+    results = provider.handle({
+        "query_type": "kis",
+        "query": "Có bao nhiêu xe máy ở ngã tư?",
+        "query_refine": True,
+    })
+    assert any(r.get("intent") == "count" for r in results)
+
+
+def test_count_modalities_in_plan():
+    """DeterministicQueryParser assigns correct modalities per intent (Item 4)."""
+    from backend.app.services.query_refiner import DeterministicQueryParser
+    parser = DeterministicQueryParser()
+
+    retrieve_plan = parser.parse("người đàn ông mặc áo đỏ", task_type="kis")
+    assert "visual" in retrieve_plan.modalities
+
+    count_plan = parser.parse("Có bao nhiêu xe máy ở đây?", task_type="kis")
+    assert count_plan.intent == "count"
+    assert "visual" in count_plan.modalities
+    assert "detector" in count_plan.modalities
+    assert "tracking_required" not in count_plan.modalities
+
+    temporal_plan = parser.parse("Có bao nhiêu xe đi qua giao lộ trong 5 phút?", task_type="kis")
+    assert temporal_plan.intent == "temporal_count"
+    assert "tracking_required" in temporal_plan.modalities
+    assert "detector" in temporal_plan.modalities
+
+
+def test_modalities_preserved_through_refine():
+    """QueryRefiner must not strip modalities from a count plan (Item 4)."""
+    from backend.app.services.query_refiner import DeterministicQueryParser, QueryRefiner
+    parser = DeterministicQueryParser()
+    plan = parser.parse("Có bao nhiêu xe máy ở đây?", task_type="kis")
+    assert plan.modalities == ["visual", "detector"]
+
+    refiner = QueryRefiner(cache_enabled=False)
+    refined, _ = refiner.refine("Có bao nhiêu xe máy ở đây?", task_type="kis")
+    # refiner falls back to deterministic when no LLM — modalities must survive
+    assert "detector" in refined.modalities

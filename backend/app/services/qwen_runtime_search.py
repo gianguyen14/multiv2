@@ -563,28 +563,24 @@ class QwenRuntimeSearch:
             retrieval_query = query
             parser_task = "qa" if query_type == "qa" else "kis"
             deterministic_plan = self._deterministic_query_parser.parse(query, task_type=parser_task)
-            if query_refine:
+            # Count/temporal_count routing is always deterministic — never invoke
+            # the optional LLM QueryRefiner for these intents.
+            if deterministic_plan.intent in {"count", "temporal_count"}:
+                query_plan = deterministic_plan
+                if deterministic_plan.visual_queries:
+                    retrieval_query = deterministic_plan.visual_queries[0].text.strip() or query
+            elif query_refine:
                 refined_plan, query_metrics = self._get_query_refiner().refine(
                     query,
                     task_type=parser_task,
                 )
-                # The deterministic parser owns mandatory tool routing. This
-                # still works when QUERY_REFINER_ENABLED=false or the optional
-                # local language model is missing/offline.
-                if deterministic_plan.intent in {"count", "temporal_count"}:
-                    query_plan = deterministic_plan
-                    retrieval_query = deterministic_plan.visual_queries[0].text.strip()
-                else:
-                    query_plan = refined_plan
-                    if refined_plan.refinement_used and refined_plan.visual_queries:
-                        candidate_query = refined_plan.visual_queries[0].text.strip()
-                        if candidate_query:
-                            retrieval_query = candidate_query
-            elif deterministic_plan.intent in {"count", "temporal_count"}:
-                # query_refine=false preserves the original Qwen retrieval
-                # string, while a count remains detector-grounded and cannot
-                # fall through to an unconstrained QA answer model.
-                query_plan = deterministic_plan
+                query_plan = refined_plan
+                if refined_plan.refinement_used and refined_plan.visual_queries:
+                    candidate_query = refined_plan.visual_queries[0].text.strip()
+                    if candidate_query:
+                        retrieval_query = candidate_query
+            else:
+                query_plan = None
             self.last_query_plan = query_plan
             results = self.search_single(retrieval_query if query_refine else query,
                                          top_k=top_k, lexical_query=query)
