@@ -12,6 +12,7 @@ ARG TORCH_VERSION=""
 ARG TORCHVISION_VERSION=""
 ARG TORCH_EXTRA_INDEX_URL="https://download.pytorch.org/whl/cpu"
 ARG SOURCE_REVISION="unknown"
+ARG INSTALL_YOLO="false"
 
 LABEL org.opencontainers.image.source="https://github.com/gianguyen14/multiv2" \
       org.opencontainers.image.revision="$SOURCE_REVISION" \
@@ -63,6 +64,7 @@ RUN mkdir -p /data/videos /data/processed /models /cache/huggingface /cache/torc
 
 # Copy dependency specifications first to leverage Docker layer caching
 COPY requirements/base.txt requirements/base.txt
+COPY requirements/yolo.txt requirements/yolo.txt
 COPY pyproject.toml .
 
 # ---------------------------------------------------------------------------
@@ -81,6 +83,14 @@ RUN pip install --no-cache-dir --upgrade pip && \
     grep -v -E '^(torch|torchvision)[[:space:]]*$' requirements/base.txt > /tmp/requirements-no-torch.txt && \
     pip install --no-cache-dir -r /tmp/requirements-no-torch.txt && \
     rm -f /tmp/requirements-no-torch.txt
+
+# Optional detector runtime. Weights are always supplied through /models at
+# runtime; Ultralytics is not installed in the default image.
+RUN if [ "$INSTALL_YOLO" = "true" ]; then \
+        pip freeze | grep -E '^(torch|torchvision)==' > /tmp/torch-constraints.txt && \
+        pip install --no-cache-dir -c /tmp/torch-constraints.txt -r requirements/yolo.txt && \
+        rm -f /tmp/torch-constraints.txt; \
+    fi
 
 # Copy entrypoint script and set executable permissions
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

@@ -104,6 +104,53 @@ def test_standalone_object_meaning_is_still_extracted():
     assert "sea" in plan.objects
 
 
+@pytest.mark.parametrize(
+    ("query", "target", "scene"),
+    [
+        ("Có bao nhiêu xe máy ở ngã tư?", "motorcycle", "xe máy ở ngã tư"),
+        ("How many cars are visible?", "car", "cars are visible"),
+        ("How many buses are visible?", "bus", "buses are visible"),
+        ("Có mấy người trong cảnh này?", "person", "người trong cảnh này"),
+    ],
+)
+def test_count_intent_routes_deterministically(query, target, scene):
+    plan = DeterministicQueryParser().parse(query, task_type="qa")
+    assert plan.intent == "count"
+    assert plan.requires_detector is True
+    assert plan.requires_tracking is False
+    assert plan.detector_targets == [target]
+    assert plan.visual_queries[0].text.casefold() == scene.casefold()
+
+
+def test_search_ocr_and_asr_requests_do_not_route_detector():
+    parser = DeterministicQueryParser()
+    assert parser.parse("Tìm xe máy ở ngã tư").requires_detector is False
+    assert parser.parse("Dòng chữ trên biển báo là gì?", task_type="qa").requires_detector is False
+    assert parser.parse("Người dẫn chương trình nói gì?", task_type="qa").requires_detector is False
+
+
+def test_temporal_count_is_tracking_only():
+    plan = DeterministicQueryParser().parse("Trong 30 giây có bao nhiêu xe máy đi qua giao lộ?", task_type="qa")
+    assert plan.intent == "temporal_count"
+    assert plan.requires_detector is False
+    assert plan.requires_tracking is True
+
+
+def test_unknown_count_target_is_not_guessed():
+    plan = DeterministicQueryParser().parse("Có bao nhiêu kỳ lân trong ảnh?", task_type="qa")
+    assert plan.intent == "count"
+    assert plan.requires_detector is False
+    assert plan.detector_targets == []
+
+
+def test_legacy_query_plan_cache_payload_remains_loadable():
+    plan = QueryPlan.from_dict({"task_type": "kis", "original_query": "xe máy ở ngã tư"})
+    assert plan.intent == "retrieve"
+    assert plan.requires_detector is False
+    assert plan.requires_tracking is False
+    assert plan.detector_targets == []
+
+
 def test_object_extraction_prefers_specific_compound():
     plan = DeterministicQueryParser().parse("xe lam chạy trên đường")
     assert "auto rickshaw" in plan.objects

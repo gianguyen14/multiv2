@@ -4,6 +4,8 @@ services:
     build:
       context: .
       dockerfile: ${DOCKERFILE:-Dockerfile}
+      args:
+        INSTALL_YOLO: ${INSTALL_YOLO:-false}
     container_name: aic-retrieval
     restart: unless-stopped
     ports:
@@ -17,6 +19,14 @@ services:
       MODEL_CACHE_DIR: /models
       QWEN3_VL_MODEL_DIR: /models/Qwen3-VL-Embedding-2B
       SEARCH_BACKEND: ${SEARCH_BACKEND:-qwen3_vl}
+      COUNTING_ENABLED: ${COUNTING_ENABLED:-false}
+      COUNTING_TOP_N: ${COUNTING_TOP_N:-10}
+      COUNTING_MAX_CANDIDATES: ${COUNTING_MAX_CANDIDATES:-30}
+      COUNTING_CACHE_ROOT: ${COUNTING_CACHE_ROOT:-/cache/detections}
+      OBJECT_DETECTOR_BACKEND: ${OBJECT_DETECTOR_BACKEND:-yolo}
+      OBJECT_DETECTOR_MODEL: ${OBJECT_DETECTOR_MODEL:-/models/yolo/yolo11n.pt}
+      OBJECT_DETECTOR_DEVICE: ${OBJECT_DETECTOR_DEVICE:-auto}
+      OBJECT_DETECTOR_CONFIDENCE: ${OBJECT_DETECTOR_CONFIDENCE:-0.25}
       QA_ANSWER_BACKEND: ${QA_ANSWER_BACKEND:-extractive}
       QUERY_REFINER_ENABLED: ${QUERY_REFINER_ENABLED:-false}
       SEARCH_ENABLE_OCR: ${SEARCH_ENABLE_OCR:-true}
@@ -34,6 +44,7 @@ services:
     volumes:
       - ${AIC_DATA_ROOT:-/home/hermes/aic/data/aic-db-v1/runtime}:/data/runtime:ro
       - ${AIC_MODEL_ROOT:-/home/hermes/aic/models/Qwen3-VL-Embedding-2B}:/models/Qwen3-VL-Embedding-2B:ro
+      - ${YOLO_MODEL_ROOT:-./models/yolo}:/models/yolo:ro
       - ${AIC_VIDEO_ROOT:-/video/video}:/videos:ro
       - ${AIC_CACHE_ROOT:-/home/hermes/aic/cache/videos}:/cache/videos:rw
     healthcheck:

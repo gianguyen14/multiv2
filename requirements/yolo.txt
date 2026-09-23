@@ -1,0 +1,2 @@
+# Optional adapter dependency. Ultralytics is AGPL-3.0; see docs/counting_runtime.md.
+ultralytics==8.4.160

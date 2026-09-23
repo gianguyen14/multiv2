@@ -40,6 +40,8 @@ from backend.app.embeddings.qwen3_vl import (
 from backend.app.video.frame_index import load_current_frame_index
 from backend.app.services.video_source import video_url_for
 from backend.app.services.qa_answer_synthesizer import QAAnswerResult, QAAnswerSynthesizer
+from backend.app.services.query_refiner import DeterministicQueryParser, QueryPlan, QueryRefiner
+from backend.app.services.counting_service import CountingService
 
 VISUAL_FUSION_WEIGHT = 0.70
 OCR_FUSION_WEIGHT = 0.18
@@ -195,6 +197,9 @@ class QwenRuntimeSearch:
         self._validated_generation_id = None
         self.last_query_plan = None
         self.last_query_metrics = {}
+        self._query_refiner = None
+        self._deterministic_query_parser = DeterministicQueryParser()
+        self._counting_service = None
 
     @property
     def configured(self) -> bool:
@@ -297,6 +302,7 @@ class QwenRuntimeSearch:
             "ocr_records": len(self._ocr_records) if initialized else 0,
             "asr_records": len(self._asr_records) if initialized else 0,
             "weights_present": weights_available(self.model_dir),
+            "counting": self._get_counting_service().status(),
             "capabilities": {
                 "kis": True,
                 "qa": True,
@@ -348,6 +354,18 @@ class QwenRuntimeSearch:
                 best[uid] = (score, row["raw_text"])
         return sorted(best.items(), key=lambda item: (-item[1][0], item[0]))[:limit]
 
+    def _get_query_refiner(self) -> QueryRefiner:
+        if self._query_refiner is None:
+            # The packed Qwen runtime mount is read-only in production; plan
+            # computation stays in memory and must not mutate index storage.
+            self._query_refiner = QueryRefiner(cache_enabled=False)
+        return self._query_refiner
+
+    def _get_counting_service(self) -> CountingService:
+        if self._counting_service is None:
+            self._counting_service = CountingService(self.processed_root or ".")
+        return self._counting_service
+
     @staticmethod
     def _minmax(values: list[float]) -> list[float]:
         if not values:
@@ -357,7 +375,9 @@ class QwenRuntimeSearch:
             return [1.0 if hi > 0 else 0.0 for _ in values]
         return [(value - lo) / (hi - lo) for value in values]
 
-    def search_single(self, query: str, top_k: int = 100) -> list[dict[str, Any]]:
+    def search_single(
+        self, query: str, top_k: int = 100, *, lexical_query: str | None = None
+    ) -> list[dict[str, Any]]:
         """Runs one text query with the exact verified runtime semantics."""
         self._initialize()
         bundle = self._bundle
@@ -377,8 +397,9 @@ class QwenRuntimeSearch:
             if payload is not None:
                 visual.append((uid, float(hit["score"])))
 
-        ocr = self._top_text_hits(query, self._ocr_records) if self.enable_ocr else []
-        asr = self._top_text_hits(query, self._asr_records) if self.enable_asr else []
+        evidence_query = lexical_query if lexical_query is not None else query
+        ocr = self._top_text_hits(evidence_query, self._ocr_records) if self.enable_ocr else []
+        asr = self._top_text_hits(evidence_query, self._asr_records) if self.enable_asr else []
 
         all_uids = {uid for uid, _ in visual} | {uid for uid, _ in ocr} | {uid for uid, _ in asr}
         visual_map = dict(visual)
@@ -522,6 +543,12 @@ class QwenRuntimeSearch:
         query_type = request.get("query_type", "kis")
         top_k = int(request.get("top_k", 100))
         started = time.perf_counter()
+        query_plan = None
+        query_metrics = {}
+        count_metrics = {
+            "intent": "retrieve", "detector_invoked": False, "detector_backend": None,
+            "detector_candidates": 0, "detector_cache_hits": 0, "detector_ms": 0.0,
+        }
 
         if query_type == "trake":
             events = request.get("events")
@@ -532,8 +559,49 @@ class QwenRuntimeSearch:
             query = request.get("query", "")
             if not isinstance(query, str) or not query.strip():
                 raise ValueError("query is required")
-            results = self.search_single(query, top_k=top_k)
-            if query_type == "qa":
+            query_refine = bool(request.get("query_refine", True))
+            retrieval_query = query
+            parser_task = "qa" if query_type == "qa" else "kis"
+            deterministic_plan = self._deterministic_query_parser.parse(query, task_type=parser_task)
+            if query_refine:
+                refined_plan, query_metrics = self._get_query_refiner().refine(
+                    query,
+                    task_type=parser_task,
+                )
+                # The deterministic parser owns mandatory tool routing. This
+                # still works when QUERY_REFINER_ENABLED=false or the optional
+                # local language model is missing/offline.
+                if deterministic_plan.intent in {"count", "temporal_count"}:
+                    query_plan = deterministic_plan
+                    retrieval_query = deterministic_plan.visual_queries[0].text.strip()
+                else:
+                    query_plan = refined_plan
+                    if refined_plan.refinement_used and refined_plan.visual_queries:
+                        candidate_query = refined_plan.visual_queries[0].text.strip()
+                        if candidate_query:
+                            retrieval_query = candidate_query
+            elif deterministic_plan.intent in {"count", "temporal_count"}:
+                # query_refine=false preserves the original Qwen retrieval
+                # string, while a count remains detector-grounded and cannot
+                # fall through to an unconstrained QA answer model.
+                query_plan = deterministic_plan
+            self.last_query_plan = query_plan
+            results = self.search_single(retrieval_query if query_refine else query,
+                                         top_k=top_k, lexical_query=query)
+
+            if query_plan and query_plan.intent in {"count", "temporal_count"}:
+                results, count_metrics = self._get_counting_service().count(query_plan, results)
+                if query_type == "qa" or query_plan.task_type == "qa":
+                    if query_plan.intent == "temporal_count":
+                        for row in results:
+                            row["answer"] = "Đếm phương tiện đi qua cần theo dõi chuyển động; tính năng này chưa được hỗ trợ."
+                    elif count_metrics.get("detector_status") == "unsupported_target":
+                        for row in results:
+                            row["answer"] = "Không hỗ trợ loại đối tượng cần đếm."
+                    elif count_metrics.get("detector_status") == "unavailable":
+                        for row in results:
+                            row["answer"] = "Bộ đếm đối tượng hiện không khả dụng."
+            elif query_type == "qa":
                 remote_limit = self.answer_synthesizer.remote_top_n
                 for rank, row in enumerate(results, 1):
                     fallback = self._qa_answer(row)
@@ -565,7 +633,13 @@ class QwenRuntimeSearch:
             "backend": "qwen3_vl",
             "generation_id": self._generation_id,
             "total_query_ms": round((time.perf_counter() - started) * 1000.0, 2),
+            "intent": query_plan.intent if query_plan else "retrieve",
+            "query_refine_used": bool(request.get("query_refine", True)
+                                       and query_plan and query_plan.refinement_used),
+            "query_refine_metrics": query_metrics,
+            **count_metrics,
         }
+        self.last_query_plan = query_plan
         return results
 
     def search_image(self, image_or_path, top_k=100, deduplicate=True):

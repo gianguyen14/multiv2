@@ -57,6 +57,13 @@ class QueryPlan(BaseModel):
     task_type: Literal["kis", "qa", "trake", "image", "general"] = "kis"
     original_query: str
 
+    # Additive routing fields. Defaults intentionally keep older serialized
+    # QueryPlan cache entries loadable.
+    intent: Literal["retrieve", "qa", "count", "temporal_count"] = "retrieve"
+    requires_detector: bool = False
+    requires_tracking: bool = False
+    detector_targets: List[str] = Field(default_factory=list)
+
     visual_queries: List[VisualQuery] = Field(default_factory=list)
     lexical_terms: List[str] = Field(default_factory=list)
     exact_strings: List[str] = Field(default_factory=list)
@@ -117,7 +124,83 @@ OBJECT_TERMS = {
     "xe xích lô": "rickshaw", "tàu hỏa": "train", "máy bay": "airplane", "nhà": "building",
     "đền thờ": "temple", "chùa": "pagoda", "núi": "mountain", "sông": "river",
     "biển": "sea", "rùa": "turtle", "cứu hộ": "rescue workers", "lính cứu hỏa": "firefighters",
+    # Common English forms let deterministic count routing support bilingual
+    # requests without making an LLM a prerequisite.
+    "motorcycle": "motorcycle", "motorcycles": "motorcycle", "motorbike": "motorcycle",
+    "motorbikes": "motorcycle", "motorbikers": "motorcycle",
+    "car": "car", "cars": "car", "automobile": "car", "automobiles": "car",
+    "bus": "bus", "buses": "bus", "truck": "truck", "trucks": "truck",
+    "person": "person", "people": "person", "pedestrian": "person", "pedestrians": "person",
+    "bicycle": "bicycle", "bicycles": "bicycle", "bike": "bicycle", "bikes": "bicycle",
+    "xe hơi": "car", "ô tô": "car", "ôtô": "car", "mô tô": "motorcycle",
+    "xe đạp": "bicycle", "xe đạp điện": "motorcycle", "xe khách": "bus",
 }
+
+DETECTOR_TARGET_ALIASES = {
+    "motorcycle": "motorcycle", "motorcycles": "motorcycle", "motorbike": "motorcycle",
+    "motorbikes": "motorcycle", "scooter": "motorcycle", "scooters": "motorcycle",
+    "mô tô": "motorcycle", "xe máy": "motorcycle", "xe tay ga": "motorcycle", "xe đạp điện": "motorcycle",
+    "car": "car", "automobile": "car", "ô tô": "car", "ôtô": "car", "xe hơi": "car",
+    "bus": "bus", "xe buýt": "bus", "xe khách": "bus",
+    "truck": "truck", "xe tải": "truck",
+    "person": "person", "people": "person", "người": "person", "pedestrian": "person",
+    "bicycle": "bicycle", "bike": "bicycle", "xe đạp": "bicycle",
+    "airplane": "airplane", "airplanes": "airplane", "plane": "airplane", "máy bay": "airplane",
+    "train": "train", "trains": "train", "tàu hỏa": "train",
+    "boat": "boat", "boats": "boat", "thuyền": "boat",
+    "traffic light": "traffic light", "traffic lights": "traffic light", "đèn giao thông": "traffic light",
+    "fire hydrant": "fire hydrant", "fire hydrants": "fire hydrant",
+    "stop sign": "stop sign", "stop signs": "stop sign", "biển báo dừng": "stop sign",
+    "parking meter": "parking meter", "parking meters": "parking meter",
+    "bench": "bench", "benches": "bench", "ghế băng": "bench",
+    "bird": "bird", "birds": "bird", "chim": "bird",
+    "cat": "cat", "cats": "cat", "mèo": "cat", "dog": "dog", "dogs": "dog", "chó": "dog",
+    "horse": "horse", "horses": "horse", "ngựa": "horse",
+    "sheep": "sheep", "cừu": "sheep", "cow": "cow", "cows": "cow", "bò": "cow",
+    "elephant": "elephant", "elephants": "elephant", "voi": "elephant",
+    "bear": "bear", "bears": "bear", "gấu": "bear",
+    "zebra": "zebra", "zebras": "zebra", "ngựa vằn": "zebra",
+    "giraffe": "giraffe", "giraffes": "giraffe", "hươu cao cổ": "giraffe",
+    "backpack": "backpack", "backpacks": "backpack", "ba lô": "backpack",
+    "umbrella": "umbrella", "umbrellas": "umbrella", "ô dù": "umbrella",
+    "handbag": "handbag", "handbags": "handbag", "túi xách": "handbag",
+    "tie": "tie", "ties": "tie", "cà vạt": "tie",
+    "suitcase": "suitcase", "suitcases": "suitcase", "vali": "suitcase",
+    "frisbee": "frisbee", "frisbees": "frisbee", "đĩa ném": "frisbee",
+    "skis": "skis", "ván trượt tuyết": "skis", "snowboard": "snowboard", "snowboards": "snowboard",
+    "sports ball": "sports ball", "quả bóng": "sports ball", "kite": "kite", "kites": "kite", "diều": "kite",
+    "baseball bat": "baseball bat", "baseball glove": "baseball glove",
+    "skateboard": "skateboard", "skateboards": "skateboard", "ván trượt": "skateboard",
+    "surfboard": "surfboard", "surfboards": "surfboard", "ván lướt sóng": "surfboard",
+    "tennis racket": "tennis racket", "tennis rackets": "tennis racket",
+    "bottle": "bottle", "bottles": "bottle", "chai": "bottle",
+    "wine glass": "wine glass", "wine glasses": "wine glass", "ly rượu": "wine glass",
+    "cup": "cup", "cups": "cup", "cốc": "cup", "fork": "fork", "forks": "fork", "nĩa": "fork",
+    "knife": "knife", "knives": "knife", "dao": "knife", "spoon": "spoon", "spoons": "spoon", "thìa": "spoon",
+    "bowl": "bowl", "bowls": "bowl", "bát": "bowl",
+    "banana": "banana", "bananas": "banana", "chuối": "banana",
+    "apple": "apple", "apples": "apple", "táo": "apple",
+    "sandwich": "sandwich", "sandwiches": "sandwich", "bánh mì kẹp": "sandwich",
+    "orange": "orange", "oranges": "orange", "cam": "orange",
+    "broccoli": "broccoli", "bông cải xanh": "broccoli", "carrot": "carrot", "carrots": "carrot", "cà rốt": "carrot",
+    "hot dog": "hot dog", "hot dogs": "hot dog", "pizza": "pizza", "pizzas": "pizza",
+    "donut": "donut", "donuts": "donut", "cake": "cake", "cakes": "cake", "bánh kem": "cake",
+    "chair": "chair", "chairs": "chair", "ghế": "chair", "couch": "couch", "couches": "couch", "sofa": "couch",
+    "potted plant": "potted plant", "chậu cây": "potted plant", "bed": "bed", "beds": "bed", "giường": "bed",
+    "dining table": "dining table", "bàn ăn": "dining table", "toilet": "toilet", "toilets": "toilet",
+    "tv": "tv", "television": "tv", "laptop": "laptop", "laptops": "laptop",
+    "mouse": "mouse", "mice": "mouse", "remote": "remote", "điều khiển": "remote",
+    "keyboard": "keyboard", "keyboards": "keyboard", "bàn phím": "keyboard",
+    "cell phone": "cell phone", "cell phones": "cell phone", "phone": "cell phone", "điện thoại": "cell phone",
+    "microwave": "microwave", "oven": "oven", "toaster": "toaster", "sink": "sink", "bồn rửa": "sink",
+    "refrigerator": "refrigerator", "fridge": "refrigerator", "tủ lạnh": "refrigerator",
+    "book": "book", "books": "book", "sách": "book", "clock": "clock", "clocks": "clock", "đồng hồ": "clock",
+    "vase": "vase", "vases": "vase", "bình hoa": "vase", "scissors": "scissors", "kéo": "scissors",
+    "teddy bear": "teddy bear", "teddy bears": "teddy bear", "gấu bông": "teddy bear",
+    "hair drier": "hair drier", "hair dryer": "hair drier", "toothbrush": "toothbrush", "bàn chải đánh răng": "toothbrush",
+}
+
+OBJECT_TERMS.update(DETECTOR_TARGET_ALIASES)
 
 # Some Vietnamese nouns are polysemous when they form a compound.  These are
 # linguistic exclusions, not corpus entities: for example, "biển" is the sea,
@@ -223,6 +306,16 @@ class DeterministicQueryParser:
         re.compile(r"\b(?:xuất\s+hiện|được\s+thấy|được\s+quay)\s+trong\s+(?:đoạn\s+)?(?:video|phim)\b", re.I),
         re.compile(r"\btrong\s+(?:đoạn\s+)?(?:video|phim)\b", re.I),
     )
+    COUNT_PATTERNS = (
+        re.compile(r"\bhow\s+many\b", re.I),
+        re.compile(r"\bnumber\s+of\b", re.I),
+        re.compile(r"\b(?:có\s+)?(?:bao\s+nhiêu|mấy)\b", re.I),
+    )
+    TEMPORAL_COUNT_PATTERNS = (
+        re.compile(r"\b(?:đi\s+qua|đã\s+đi\s+qua|đi\s+qua\s+giao\s+lộ|chạy\s+qua)\b", re.I),
+        re.compile(r"\b(?:passed|pass(?:es)?\s+through|cross(?:ed|es)?|went\s+through)\b", re.I),
+        re.compile(r"\b(?:trong\s+)?\d+\s*(?:giây|phút|seconds?|minutes?)\b", re.I),
+    )
 
     @classmethod
     def _build_visual_caption(
@@ -258,6 +351,8 @@ class DeterministicQueryParser:
             caption = cls.PATTERN_INITIAL_WHO.sub(r"\1người", caption, count=1)
             for pattern in cls.QA_NON_VISUAL_PATTERNS:
                 caption = pattern.sub(" ", caption)
+        for pattern in cls.COUNT_PATTERNS:
+            caption = pattern.sub(" ", caption)
 
         caption = re.sub(r"\s+([,.;!?])", r"\1", caption)
         caption = re.sub(r"\s+", " ", caption).strip(" ,.-:?!")
@@ -297,6 +392,8 @@ class DeterministicQueryParser:
     def parse(self, query: str, task_type: str = "kis") -> QueryPlan:
         q_raw = query.strip()
         q_norm = normalize_text(q_raw)
+        is_count = any(pattern.search(q_raw) for pattern in self.COUNT_PATTERNS)
+        is_temporal_count = is_count and any(pattern.search(q_raw) for pattern in self.TEMPORAL_COUNT_PATTERNS)
 
         exact_strings: List[str] = []
         lexical_terms: List[str] = []
@@ -377,6 +474,11 @@ class DeterministicQueryParser:
 
         # 9. Extract Objects
         objects.extend(self._extract_objects(q_norm))
+        detector_targets = list(dict.fromkeys(
+            DETECTOR_TARGET_ALIASES[value]
+            for value in objects
+            if value in DETECTOR_TARGET_ALIASES
+        ))
 
         # Clean visual query: OCR/exact strings use their own retrieval channel,
         # while visual embeddings receive only observable semantic focus.
@@ -419,8 +521,12 @@ class DeterministicQueryParser:
                 )
 
         return QueryPlan(
-            task_type=task_type,
+            task_type="qa" if is_count and task_type == "kis" else task_type,
             original_query=q_raw,
+            intent=("temporal_count" if is_temporal_count else "count") if is_count else "retrieve",
+            requires_detector=is_count and not is_temporal_count and bool(detector_targets),
+            requires_tracking=is_temporal_count,
+            detector_targets=detector_targets,
             visual_queries=visual_queries[:QUERY_REFINER_MAX_VISUAL_VARIANTS],
             lexical_terms=list(dict.fromkeys(lexical_terms)),
             exact_strings=list(dict.fromkeys(exact_strings)),
@@ -440,7 +546,7 @@ class DeterministicQueryParser:
 # =========================================================================
 
 PROMPT_VERSION = "v2"
-SCHEMA_VERSION = "v1"
+SCHEMA_VERSION = "v2"
 
 SYSTEM_PROMPT_TEMPLATE = """You are a retrieval-query planner for multimodal video search.
 
@@ -631,6 +737,10 @@ class LocalLLMQueryRefiner:
             plan = QueryPlan(
                 task_type=base_plan.task_type,
                 original_query=base_plan.original_query,
+                intent=base_plan.intent,
+                requires_detector=base_plan.requires_detector,
+                requires_tracking=base_plan.requires_tracking,
+                detector_targets=base_plan.detector_targets,
                 visual_queries=visual_queries[:QUERY_REFINER_MAX_VISUAL_VARIANTS],
                 lexical_terms=list(dict.fromkeys(base_plan.lexical_terms + validated.kept_vi_terms)),
                 exact_strings=base_plan.exact_strings,
