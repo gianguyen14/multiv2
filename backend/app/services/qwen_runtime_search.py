@@ -200,6 +200,12 @@ class QwenRuntimeSearch:
         self._query_refiner = None
         self._deterministic_query_parser = DeterministicQueryParser()
         self._counting_service = None
+        self._last_search_execution = {
+            "executed_modalities": [],
+            "visual_invoked": False,
+            "ocr_invoked": False,
+            "asr_invoked": False,
+        }
 
     @property
     def configured(self) -> bool:
@@ -376,9 +382,30 @@ class QwenRuntimeSearch:
         return [(value - lo) / (hi - lo) for value in values]
 
     def search_single(
-        self, query: str, top_k: int = 100, *, lexical_query: str | None = None
+        self,
+        query: str,
+        top_k: int = 100,
+        *,
+        lexical_query: str | None = None,
+        use_visual: bool = True,
+        use_ocr: bool = True,
+        use_asr: bool = True,
     ) -> list[dict[str, Any]]:
-        """Runs one text query with the exact verified runtime semantics."""
+        """Runs one text query with explicit, additive modality selection.
+
+        The visual/index search remains one implementation; OCR and ASR only
+        participate when enabled by the execution plan.
+        """
+        self._last_search_execution = {
+            "executed_modalities": (["visual"] if use_visual else [])
+            + (["ocr"] if use_ocr else [])
+            + (["asr"] if use_asr else []),
+            "visual_invoked": bool(use_visual),
+            "ocr_invoked": bool(use_ocr and self.enable_ocr),
+            "asr_invoked": bool(use_asr and self.enable_asr),
+        }
+        if not use_visual:
+            raise ValueError("Qwen text retrieval requires visual modality")
         self._initialize()
         bundle = self._bundle
         assert bundle is not None and self._encoder is not None
@@ -398,8 +425,8 @@ class QwenRuntimeSearch:
                 visual.append((uid, float(hit["score"])))
 
         evidence_query = lexical_query if lexical_query is not None else query
-        ocr = self._top_text_hits(evidence_query, self._ocr_records) if self.enable_ocr else []
-        asr = self._top_text_hits(evidence_query, self._asr_records) if self.enable_asr else []
+        ocr = self._top_text_hits(evidence_query, self._ocr_records) if use_ocr and self.enable_ocr else []
+        asr = self._top_text_hits(evidence_query, self._asr_records) if use_asr and self.enable_asr else []
 
         all_uids = {uid for uid, _ in visual} | {uid for uid, _ in ocr} | {uid for uid, _ in asr}
         visual_map = dict(visual)
@@ -591,7 +618,15 @@ class QwenRuntimeSearch:
                 _search_q = retrieval_query  # refined query
             else:
                 _search_q = query  # raw query (no refinement requested)
-            results = self.search_single(_search_q, top_k=top_k, lexical_query=query)
+            execution_modalities = list(query_plan.modalities) if query_plan and query_plan.modalities else ["visual", "ocr", "asr"]
+            results = self.search_single(
+                _search_q,
+                top_k=top_k,
+                lexical_query=query,
+                use_visual="visual" in execution_modalities,
+                use_ocr="ocr" in execution_modalities,
+                use_asr="asr" in execution_modalities,
+            )
 
             if query_plan and query_plan.intent in {"count", "temporal_count"}:
                 results, count_metrics = self._get_counting_service().count(query_plan, results)
@@ -641,8 +676,25 @@ class QwenRuntimeSearch:
             "query_refine_used": bool(request.get("query_refine", True)
                                        and query_plan and query_plan.refinement_used),
             "query_refine_metrics": query_metrics,
+            "planned_modalities": list(query_plan.modalities) if query_plan and query_plan.modalities else ["visual", "ocr", "asr"],
+            "executed_modalities": list(self._last_search_execution.get("executed_modalities", [])),
+            "visual_invoked": bool(self._last_search_execution.get("visual_invoked")),
+            "ocr_invoked": bool(self._last_search_execution.get("ocr_invoked")),
+            "asr_invoked": bool(self._last_search_execution.get("asr_invoked")),
             **count_metrics,
         }
+        if query_plan and query_plan.intent in {"count", "temporal_count"}:
+            # Detector is an execution modality even when temporal counting is
+            # intentionally refused before any frame inference.
+            self.last_query_metrics["detector_invoked"] = bool(
+                count_metrics.get("detector_invoked")
+            )
+            if "detector" not in self.last_query_metrics["executed_modalities"]:
+                self.last_query_metrics["executed_modalities"].append("detector")
+            if query_plan.intent == "temporal_count":
+                if "tracking_required" not in self.last_query_metrics["executed_modalities"]:
+                    self.last_query_metrics["executed_modalities"].append("tracking_required")
+
         self.last_query_plan = query_plan
         return results
 

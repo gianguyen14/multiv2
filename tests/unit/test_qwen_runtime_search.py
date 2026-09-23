@@ -796,3 +796,72 @@ def test_count_query_refine_false_uses_cleaned_visual_query(runtime, tmp_path):
     )
     # Should be the deterministic cleaned visual query
     assert "xe máy" in encoded[0], f"Expected 'xe máy' in cleaned query: {encoded[0]!r}"
+
+
+def test_modalities_static_count_disables_text_evidence(runtime, tmp_path):
+    model_dir = _touch_model(tmp_path / "model")
+    provider = _search(runtime, model_dir, "t0")
+    provider.handle({"query_type": "kis", "query": "Có bao nhiêu xe máy ở ngã tư?", "top_k": 2})
+    m = provider.last_query_metrics
+    assert m["executed_modalities"] == ["visual", "detector"]
+    assert m["visual_invoked"] is True
+    assert m["ocr_invoked"] is False
+    assert m["asr_invoked"] is False
+
+
+def test_modalities_count_with_exact_text_enables_ocr_only(runtime, tmp_path):
+    model_dir = _touch_model(tmp_path / "model")
+    provider = _search(runtime, model_dir, "t0")
+    provider.handle({"query_type": "kis", "query": "Có bao nhiêu xe cạnh biển ghi 'LOTTERIA'?", "top_k": 2})
+    m = provider.last_query_metrics
+    assert m["executed_modalities"] == ["visual", "ocr", "detector"]
+    assert m["ocr_invoked"] is True
+    assert m["asr_invoked"] is False
+
+
+def test_modalities_ordinary_retrieval_preserves_visual_ocr_asr(runtime, tmp_path):
+    model_dir = _touch_model(tmp_path / "model")
+    provider = _search(runtime, model_dir, "t0")
+    provider.handle({"query_type": "kis", "query": "Tìm xe máy ở ngã tư", "top_k": 2})
+    m = provider.last_query_metrics
+    assert m["executed_modalities"] == ["visual", "ocr", "asr"]
+    assert m["visual_invoked"] is True
+    assert m["ocr_invoked"] is True
+    assert m["asr_invoked"] is True
+
+
+def test_modalities_count_refine_false_are_deterministic(runtime, tmp_path):
+    model_dir = _touch_model(tmp_path / "model")
+    provider = _search(runtime, model_dir, "t0")
+    provider.handle({
+        "query_type": "kis",
+        "query": "Có bao nhiêu xe cạnh biển ghi 'LOTTERIA'?",
+        "query_refine": False,
+        "top_k": 2,
+    })
+    assert provider.last_query_metrics["executed_modalities"] == ["visual", "ocr", "detector"]
+
+
+def test_modalities_temporal_count_requires_tracking_without_detector(runtime, tmp_path):
+    model_dir = _touch_model(tmp_path / "model")
+    provider = _search(runtime, model_dir, "t0")
+    provider.handle({
+        "query_type": "qa",
+        "query": "How many motorcycles passed the intersection in 30 seconds?",
+        "top_k": 2,
+    })
+    m = provider.last_query_metrics
+    assert m["executed_modalities"] == ["visual", "detector", "tracking_required"]
+    assert m["detector_invoked"] is False
+    assert m["ocr_invoked"] is False
+    assert m["asr_invoked"] is False
+
+
+def test_modalities_count_with_speech_constraint_enables_asr(runtime, tmp_path):
+    model_dir = _touch_model(tmp_path / "model")
+    provider = _search(runtime, model_dir, "t0")
+    provider.handle({"query_type": "kis", "query": "Có bao nhiêu người khi MC nói về bão số 3?", "top_k": 2})
+    m = provider.last_query_metrics
+    assert m["executed_modalities"] == ["visual", "asr", "detector"]
+    assert m["ocr_invoked"] is False
+    assert m["asr_invoked"] is True

@@ -3,7 +3,7 @@
 Two CUDA profiles are produced by `ops/docker/build-gpu-qwen.sh`:
 
 - V100/Volta: CUDA 11.8, PyTorch 2.7.1+cu118, torchvision 0.22.1+cu118, FP16 policy.
-- Modern GPU (Ampere/Ada/Hopper): CUDA 12.8, PyTorch 2.7.1+cu128, torchvision 0.22.1+cu128, auto BF16/FP16 policy.
+- Modern GPU (Ampere/Ada/Hopper/Blackwell): CUDA 12.8, PyTorch 2.7.1+cu128, torchvision 0.22.1+cu128, auto BF16/FP16 policy. This includes RTX 5090, RTX PRO 6000, and MIG-partitioned modern GPUs where the runtime exposes the required CUDA capability.
 
 Both profiles build with `INSTALL_YOLO=true` (Ultralytics included, weights external).
 

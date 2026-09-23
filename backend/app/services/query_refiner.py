@@ -525,18 +525,40 @@ class DeterministicQueryParser:
                     )
                 )
 
+        # Text/speech constraints are additive: count still requires visual and
+        # detector, but exact strings/lexical cues can activate OCR and explicit
+        # speech cues can activate ASR without changing ordinary recall.
+        has_ocr_constraint = bool(exact_strings) or bool(re.search(
+            r"\b(?:biển|bảng|ghi|chữ|viết|dòng chữ|license|plate|text|sign|caption)\b",
+            q_norm,
+            re.I,
+        ))
+        has_asr_constraint = bool(re.search(
+            r"\b(?:nói|nói rằng|phát biểu|đề cập|khi .* nói|when .* says|said|speaks?|speech|voice|whisper)\b",
+            q_norm,
+            re.I,
+        ))
+        intent = ("temporal_count" if is_temporal_count else "count") if is_count else "retrieve"
+        if intent == "temporal_count":
+            modalities = ["visual", "detector", "tracking_required"]
+        elif intent == "count":
+            modalities = ["visual"]
+            if has_ocr_constraint:
+                modalities.append("ocr")
+            if has_asr_constraint:
+                modalities.append("asr")
+            modalities.append("detector")
+        else:
+            modalities = ["visual", "ocr", "asr"]
+
         return QueryPlan(
             task_type="qa" if is_count and task_type == "kis" else task_type,
             original_query=q_raw,
-            intent=("temporal_count" if is_temporal_count else "count") if is_count else "retrieve",
+            intent=intent,
             requires_detector=is_count and not is_temporal_count and bool(detector_targets),
             requires_tracking=is_temporal_count,
             detector_targets=detector_targets,
-            modalities=(
-                ["visual", "detector", "tracking_required"] if is_temporal_count
-                else ["visual", "detector"] if is_count
-                else ["visual", "ocr", "asr"]
-            ),
+            modalities=modalities,
             visual_queries=visual_queries[:QUERY_REFINER_MAX_VISUAL_VARIANTS],
             lexical_terms=list(dict.fromkeys(lexical_terms)),
             exact_strings=list(dict.fromkeys(exact_strings)),
