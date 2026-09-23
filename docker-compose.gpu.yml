@@ -6,6 +6,7 @@ services:
       dockerfile: ${DOCKERFILE:-Dockerfile}
       args:
         TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}
+        INSTALL_YOLO: ${INSTALL_YOLO:-false}
     container_name: aic-retrieval-gpu
     restart: unless-stopped
     ports:
@@ -18,6 +19,14 @@ services:
       MODEL_CACHE_DIR: /models
       QWEN3_VL_MODEL_DIR: /models/Qwen3-VL-Embedding-2B
       SEARCH_BACKEND: ${SEARCH_BACKEND:-qwen3_vl}
+      COUNTING_ENABLED: ${COUNTING_ENABLED:-false}
+      COUNTING_TOP_N: ${COUNTING_TOP_N:-10}
+      COUNTING_MAX_CANDIDATES: ${COUNTING_MAX_CANDIDATES:-30}
+      COUNTING_CACHE_ROOT: ${COUNTING_CACHE_ROOT:-/cache/detections}
+      OBJECT_DETECTOR_BACKEND: ${OBJECT_DETECTOR_BACKEND:-yolo}
+      OBJECT_DETECTOR_MODEL: ${OBJECT_DETECTOR_MODEL:-/models/yolo/yolo11n.pt}
+      OBJECT_DETECTOR_DEVICE: ${OBJECT_DETECTOR_DEVICE:-auto}
+      OBJECT_DETECTOR_CONFIDENCE: ${OBJECT_DETECTOR_CONFIDENCE:-0.25}
       INGEST_BACKEND: ${INGEST_BACKEND:-qwen3_vl}
       GPU_STRICT: ${GPU_STRICT:-true}
       QWEN_DTYPE: ${QWEN_DTYPE:-auto}
@@ -46,6 +55,7 @@ services:
     volumes:
       - ${AIC_DATA_ROOT:-/home/hermes/aic/data/aic-db-v1/runtime}:/data/runtime:ro
       - ${AIC_MODEL_ROOT:-/home/hermes/aic/models/Qwen3-VL-Embedding-2B}:/models/Qwen3-VL-Embedding-2B:ro
+      - ${YOLO_MODEL_ROOT:-./models/yolo}:/models/yolo:ro
       - ${AIC_VIDEO_ROOT:-/video/video}:/videos:ro
       - ${AIC_CACHE_ROOT:-/home/hermes/aic/cache/videos}:/cache/videos:rw
     deploy:

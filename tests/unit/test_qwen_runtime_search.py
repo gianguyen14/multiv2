@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 
 from backend.app.services.qwen_runtime_search import QwenRuntimeSearch
+from backend.app.services.qa_answer_synthesizer import QAAnswerResult
 
 VIDEO = "VID"
 
@@ -297,6 +298,18 @@ def test_qa_attaches_evidence_answer(runtime, tmp_path):
     assert len(answered[0]["answer"]) <= 100
 
 
+def test_asr_evidence_still_answers_ordinary_qa_without_detector(runtime, tmp_path):
+    model_dir = _touch_model(tmp_path / "model")
+    provider = _search(runtime, model_dir, "x")
+    results = provider.handle({
+        "query_type": "qa", "query": "anh ta đang nói chuyện", "top_k": 6,
+    })
+    hit = next(row for row in results if row["asr_score"] > 0)
+    assert "noi chuyen" in hit["asr_evidence"]
+    assert hit["answer"] == "anh ta dang noi chuyen"
+    assert provider.last_query_metrics["detector_invoked"] is False
+
+
 def test_qa_remote_budget_caps_calls_and_keeps_rest_extractive(runtime, tmp_path):
     import json as _json
 
@@ -455,6 +468,104 @@ def test_search_is_readonly(runtime, tmp_path):
         for p in root.rglob("*") if p.is_file()
     )
     assert after == before
+
+
+def test_query_refine_false_keeps_qwen_embedding_query_unchanged(runtime, tmp_path):
+    model_dir = _touch_model(tmp_path / "model")
+    root, _, _ = runtime
+    encoded = []
+
+    class CapturingEncoder(StubEncoder):
+        def encode_query(self, query, dimension):
+            encoded.append(query)
+            return super().encode_query(query, dimension)
+
+    provider = QwenRuntimeSearch(
+        processed_root=root,
+        model_dir=model_dir,
+        encoder_factory=lambda: CapturingEncoder(4),
+    )
+    provider.handle({"query_type": "kis", "query": "t2", "top_k": 2, "query_refine": False})
+    assert encoded == ["t2"]
+    assert provider.last_query_plan is None
+    assert provider.last_query_metrics["query_refine_used"] is False
+    assert provider.last_query_metrics["detector_invoked"] is False
+
+
+def test_ordinary_kis_does_not_construct_detector(runtime, tmp_path):
+    model_dir = _touch_model(tmp_path / "model")
+    provider = _search(runtime, model_dir, "x")
+
+    def forbidden():
+        raise AssertionError("ordinary retrieval must not construct a detector")
+
+    provider._get_counting_service = forbidden
+    results = provider.handle({"query_type": "kis", "query": "Tìm xe máy ở ngã tư", "top_k": 2})
+    assert results
+    assert provider.last_query_metrics["detector_invoked"] is False
+
+
+def test_count_qa_uses_structured_detector_answer_not_remote_synthesizer(runtime, tmp_path):
+    from backend.app.services.counting_service import CountingService
+    from backend.app.vision.object_detector import Detection
+
+    model_dir = _touch_model(tmp_path / "model")
+    root, _, _ = runtime
+    frames = root / VIDEO / "frames"
+    frames.mkdir(parents=True, exist_ok=True)
+    for index in range(6):
+        (frames / f"{index:09d}.jpg").write_bytes(b"fixture")
+
+    class FakeDetector:
+        backend = "yolo"
+        model_identity = "test-sha256"
+        confidence = 0.25
+        calls = 0
+
+        def detect(self, image_or_path):
+            self.calls += 1
+            return [Detection("motorcycle", 3, 0.91, (1, 2, 3, 4))]
+
+    class RemoteSynthesizer:
+        remote_top_n = 5
+        calls = 0
+
+        def synthesize(self, question, evidence, fallback=""):
+            self.calls += 1
+            return QAAnswerResult("99", "remote_llm", "remote", "ok")
+
+    detector = FakeDetector()
+    synth = RemoteSynthesizer()
+    provider = _search(runtime, model_dir, "x")
+    provider._counting_service = CountingService(root, detector=detector, top_n=2)
+    provider.answer_synthesizer = synth
+    results = provider.handle({
+        "query_type": "qa", "query": "Có bao nhiêu xe máy ở ngã tư?", "top_k": 2,
+    })
+
+    assert results[0]["intent"] == "count"
+    assert results[0]["detector_target"] == "motorcycle"
+    assert results[0]["detector_count"] == 1
+    assert results[0]["answer"] == "1"
+    assert detector.calls == 2
+    assert synth.calls == 0
+    assert provider.last_query_plan.intent == "count"
+    assert provider.last_query_metrics["detector_invoked"] is True
+    assert provider.last_query_metrics["detector_candidates"] == 2
+
+
+def test_temporal_count_returns_tracking_required_without_detector(runtime, tmp_path):
+    model_dir = _touch_model(tmp_path / "model")
+    provider = _search(runtime, model_dir, "x")
+    results = provider.handle({
+        "query_type": "qa",
+        "query": "How many motorcycles passed the intersection in 30 seconds?",
+        "top_k": 2,
+    })
+    assert results[0]["detector_status"] == "tracking_required"
+    assert results[0]["tracking"] == {"supported": False, "status": "tracking_required"}
+    assert "detector_count" not in results[0]
+    assert provider.last_query_metrics["detector_invoked"] is False
 
 
 def test_create_app_defaults_to_qwen_backend(tmp_path, monkeypatch):
