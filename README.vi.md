@@ -4,7 +4,7 @@
 
 ### Hệ thống truy hồi video đa phương thức, ưu tiên vận hành cục bộ
 
-**Văn bản → Khung hình · Video Q&A · TRAKE · Tìm bằng ảnh · OCR · ASR · Tinh chỉnh theo thời gian**
+**Văn bản → Khung hình · Video Q&A · TRAKE · OCR · ASR** (Tìm kiếm bằng ảnh: chỉ có trên nhánh thử nghiệm)
 
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Recommended-2496ED?logo=docker&logoColor=white)
@@ -25,68 +25,91 @@
 
 | Chế độ | Đầu vào | Kết quả | Tín hiệu chính |
 |---|---|---|---|
-| 🔎 **Textual KIS** | Mô tả bằng ngôn ngữ tự nhiên | Danh sách `video_id`, `frame_id` được xếp hạng | SigLIP2 + OCR + ASR + hợp nhất kết quả |
-| 💬 **Video Q&A** | Câu hỏi về nội dung video | Khung hình bằng chứng phục vụ bước trả lời | Hình ảnh + OCR + ASR |
-| 🧭 **TRAKE** | Chuỗi sự kiện có thứ tự | Một video + các khung hình đại diện theo đúng trình tự | Truy hồi thô + tinh chỉnh theo thời gian + DP alignment |
-| 🖼️ **Image Search** | Ảnh truy vấn | Các khung hình có nội dung hình ảnh tương đồng | SigLIP2 image embeddings |
-| 🔤 **OCR / ASR** | Khung hình + âm thanh | Văn bản có thể tìm kiếm | Tesseract + Faster Whisper |
+| 🔎 **Textual KIS** | Mô tả bằng ngôn ngữ tự nhiên | `video_id`, `frame_id` được xếp hạng | Hình ảnh Qwen3-VL + hợp nhất OCR + ASR |
+| 💬 **Video Q&A** | Câu hỏi về nội dung video | Khung hình bằng chứng + `answer` (trích xuất hoặc LLM từ xa) | Bằng chứng hình ảnh + OCR + ASR |
+| 🧭 **TRAKE** | Các sự kiện ngữ nghĩa có thứ tự | Một video + các khung hình chính theo thứ tự | Căn chỉnh sự kiện đơn điệu trong cùng một video |
+| 🖼️ **Image Search** | Ảnh truy vấn | Các khung hình tương đồng về hình ảnh | **KHÔNG KHẢ DỤNG TRÊN `main` HIỆN TẠI** (nhánh thử nghiệm) |
+| 🔤 **OCR / ASR** | Khung hình + âm thanh | Bằng chứng văn bản có thể tìm kiếm | Spool được tính trước khi ingest ngoại tuyến |
 
-Lớp truy hồi hỗ trợ truy vấn tiếng Việt và tiếng Anh, xếp hạng lại dựa trên bằng chứng, loại bớt kết quả trùng lặp theo thời gian và QueryRefiner cục bộ tùy chọn. Khi QueryRefiner không khả dụng, hệ thống có thể quay về bộ phân tích truy vấn xác định để tiếp tục hoạt động.
+Backend tìm kiếm production là **Qwen3-VL-Embedding-2B** (1024-d). SigLIP2 — backend mặc định trước đây — hiện là **LEGACY** và chỉ được dùng khi bật rõ ràng. Hệ thống hỗ trợ truy vấn tiếng Việt và tiếng Anh. **Image Search không khả dụng trên backend `main` hiện tại** — chức năng này chỉ tồn tại trên một nhánh thử nghiệm, còn chờ xác minh GPU và chưa được merge hoặc bật.
 
 ---
 
 ## 🧠 Kiến trúc tổng quan
 
 ```text
-                            ┌──────────────────────┐
-                            │   TRUY VẤN NGƯỜI DÙNG│
-                            │ text / image / Q&A   │
-                            │ chuỗi sự kiện TRAKE  │
-                            └──────────┬───────────┘
-                                       │
-                                       ▼
-                           ┌────────────────────────┐
-                           │   Phân tích truy vấn   │
-                           │ VI/EN · từ khóa · LLM │
-                           └───────────┬────────────┘
-                                       │
-                 ┌─────────────────────┼─────────────────────┐
-                 │                     │                     │
-                 ▼                     ▼                     ▼
-          ┌─────────────┐       ┌─────────────┐       ┌─────────────┐
-          │   SigLIP2   │       │     OCR     │       │     ASR     │
-          │ ảnh / text  │       │  Tesseract  │       │   Whisper   │
-          └──────┬──────┘       └──────┬──────┘       └──────┬──────┘
-                 │                     │                     │
-                 └─────────────────────┼─────────────────────┘
-                                       ▼
-                             ┌───────────────────┐
-                             │ Hợp nhất ứng viên │
-                             │ RRF + reranking   │
-                             └─────────┬─────────┘
-                                       │
-                     ┌─────────────────┼─────────────────┐
-                     │                 │                 │
-                     ▼                 ▼                 ▼
-                   KIS               Q&A              TRAKE
-                                                       │
-                                                       ▼
-                                             Dense TemporalRefiner
-                                                       │
-                                                       ▼
-                                            Căn chỉnh thứ tự bằng DP
+                               ┌─────────────────────┐
+                               │ TRUY VẤN NGƯỜI DÙNG│
+                               │ text / image / Q&A  │
+                               │ sự kiện TRAKE có thứ│
+                               │ tự                  │
+                               └──────────┬──────────┘
+                                          │
+                                          ▼
+                              ┌───────────────────────┐
+                              │ Qwen3-VL-Embedding    │
+                              │ encode_query (1024-d) │
+                              └───────────┬───────────┘
+                                          │
+                    ┌─────────────────────┼─────────────────────┐
+                    │                     │                     │
+                    ▼                     ▼                     ▼
+             ┌─────────────┐       ┌─────────────┐       ┌─────────────┐
+             │   FAISS     │       │     OCR     │       │     ASR     │
+             │ IndexFlatIP │       │  spool JSON │       │  spool JSON │
+             └──────┬──────┘       └──────┬──────┘       └──────┬──────┘
+                    │                     │                     │
+                    └─────────────────────┼─────────────────────┘
+                                          ▼
+                                ┌───────────────────┐
+                                │ Hợp nhất ứng viên │
+                                │ 0.70v+0.18o+0.12a │
+                                └─────────┬─────────┘
+                                          │
+                        ┌─────────────────┼─────────────────┐
+                        │                 │                 │
+                        ▼                 ▼                 ▼
+                      KIS               Q&A              TRAKE
+                                          │
+                                     tổng hợp câu trả lời
+                                     (mặc định trích xuất /
+                                     `remote_llm` tùy chọn)
 ```
+
+> **Backend production:** Qwen3-VL-Embedding-2B trên FAISS `IndexFlatIP` (1024-d), đọc cơ sở dữ liệu packed ở chế độ chỉ đọc. SigLIP2 (`ConfiguredSearch` / RRF / Dense `TemporalRefiner`) là **legacy** và chỉ chạy khi `SEARCH_BACKEND=siglip2`.
+> **Câu trả lời Video Q&A** đến từ bằng chứng OCR/ASR (trích xuất) hoặc bước `remote_llm` tùy chọn; xem `docs/QA_SYNTHESIS.md`.
+> **Image Search** **không khả dụng trên `main` hiện tại** — chỉ có trên nhánh thử nghiệm và còn chờ xác minh GPU.
 
 ### `frame_id` là định danh chuẩn
 
-Mỗi `frame_id` trả về là **chỉ số bắt đầu từ 0 theo đúng thứ tự khung hình mà PyAV giải mã tuần tự để hiển thị**.
+Mỗi `frame_id` trả về là **chỉ số bắt đầu từ 0 được tạo ra khi PyAV giải mã tuần tự theo thứ tự hiển thị**.
 
 ```python
 for frame_id, frame in enumerate(container.decode(stream)):
     ...
 ```
 
-Hệ thống **không** suy ra `frame_id` chuẩn bằng công thức `timestamp × FPS`. Quy ước này giúp các bước nhập dữ liệu, truy hồi, đánh giá và tinh chỉnh theo thời gian cùng dùng một hệ quy chiếu khung hình thống nhất.
+Hệ thống **không** tái tạo `frame_id` chuẩn bằng công thức `timestamp × FPS`. Quy ước này giữ cho ingest, truy hồi, đánh giá và tinh chỉnh theo thời gian cùng căn chỉnh với video nguồn.
+
+---
+
+## 📚 Tài liệu kỹ thuật
+
+Thư mục `docs/` là nguồn tham chiếu kỹ thuật chính thức:
+
+| Chủ đề | Tài liệu |
+|---|---|
+| Kiến trúc hệ thống (pipeline Qwen, DB, route) | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| Ma trận khả năng backend tìm kiếm (Qwen và SigLIP2) | [`docs/SEARCH_BACKENDS.md`](docs/SEARCH_BACKENDS.md) |
+| Schema DB v1 / DB v2 và định danh khung hình | [`docs/DATA_CONTRACT.md`](docs/DATA_CONTRACT.md) |
+| Tài liệu REST API (toàn bộ route, schema) | [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md) |
+| Tổng hợp câu trả lời Q&A (trích xuất + `remote_llm`) | [`docs/QA_SYNTHESIS.md`](docs/QA_SYNTHESIS.md) |
+| Triển khai production (Docker, env, chạy hệ thống) | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) |
+| Tham chiếu đầy đủ các biến môi trường | [`docs/RUNTIME_CONFIG.md`](docs/RUNTIME_CONFIG.md) |
+| Quickstart 5 bước | [`docs/QUICKSTART.md`](docs/QUICKSTART.md) |
+| Architecture Decision Records | [`docs/ADR/`](docs/ADR/) |
+
+Các log milestone lịch sử và báo cáo freeze được lưu trong [`docs/archive/`](docs/archive/) và được bảo tồn trong lịch sử Git.
 
 ---
 
@@ -232,6 +255,38 @@ http://127.0.0.1:8000/health/live
 http://127.0.0.1:8000/health/ready
 http://127.0.0.1:8000/health
 ```
+
+## Backend production Qwen3-VL (mặc định)
+
+Backend tìm kiếm production là **Qwen3-VL-Embedding-2B** trên DB packed hiện có gồm 47.430 vector x 1024-d (FAISS generation + spool OCR/ASR), được chọn bằng `SEARCH_BACKEND=qwen3_vl` (mặc định). DB được mount và đọc trực tiếp — **không** ingest lại, re-encode, sao chép hoặc ghi lại. Đường SigLIP2 (`SEARCH_BACKEND=siglip2`) chỉ còn dưới dạng legacy khi bật rõ ràng và sẽ từ chối truy vấn một index được tạo bởi Qwen.
+
+```bash
+# .env
+SEARCH_BACKEND=qwen3_vl
+AIC_DATA_DIR=/home/hermes/aic/data          # thư mục host chứa aic-db-v1/
+AIC_MODELS_DIR=/home/hermes/aic/models      # thư mục host chứa Qwen3-VL-Embedding-2B/
+VIDEO_PROCESSED_ROOT=/data/aic-db-v1/runtime
+QWEN3_VL_MODEL_DIR=/models/Qwen3-VL-Embedding-2B
+```
+
+Các khả năng gồm KIS, QA (câu trả lời dựa trên bằng chứng OCR/ASR) và truy vấn văn bản TRAKE (một video, chuỗi frame tăng dần). Image Search và thumbnail frame phụ thuộc backend/dữ liệu đang hoạt động. Packed DB không chứa JPEG nên thumbnail thiếu sẽ hiển thị placeholder. Có thể xem trước video gốc khi cấu hình nguồn video như bên dưới; video không được tự tải xuống trong đường chạy mặc định.
+
+### Xem trước video gốc tùy chọn
+
+Kết quả chứa `video_url` và `timestamp_seconds`. Khi operator nhấn **Play video**, FastAPI phục vụ MP4 tương ứng với hỗ trợ byte-range và frontend sẽ seek tới timestamp của kết quả sau khi metadata được tải. Cấu hình một nguồn sau đây mà không cần ingest hoặc ghi lại DB:
+
+```bash
+# File cục bộ, phục vụ trực tiếp:
+VIDEO_SOURCE_DIR=/path/to/videos
+# Hoặc tải lười theo video ID khi nhấn lần đầu:
+VIDEO_SOURCE_URL_TEMPLATE=https://host/videos/{video_id}.mp4
+# Cache cho video tải lười:
+VIDEO_CACHE_DIR=/path/to/cache/videos
+```
+
+API từ chối video ID không an toàn, tải file theo cách atomic và áp dụng giới hạn 2 GiB cho mỗi file tải từ xa. Nếu không cấu hình nguồn video, tìm kiếm vẫn hoạt động nhưng nút Play sẽ bị ẩn.
+
+`SEARCH_ENCODER` vẫn được chấp nhận như alias legacy cho `SEARCH_BACKEND`.
 
 Linux / WSL2:
 
@@ -640,7 +695,7 @@ projectctl.py  CLI quản trị và điểm vào chính của project
 
 **`1.1.0-rc3` — mã nguồn đang ở giai đoạn kiểm thử trước khi phát hành**
 
-RC2 hiện đang được kiểm thử trên môi trường NVIDIA GPU mục tiêu trước khi phát hành. Mọi tuyên bố về hiệu năng nên dựa trên dữ liệu đại diện và kết quả kiểm thử đã được ghi nhận.
+Bản release candidate đang được xác minh trên môi trường NVIDIA GPU mục tiêu trước khi được promote. Mọi tuyên bố về hiệu năng phải dựa trên dataset đại diện và kết quả xác minh đã được ghi nhận.
 
 <div align="center">
 
