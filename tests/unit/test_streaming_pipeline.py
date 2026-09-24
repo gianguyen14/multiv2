@@ -600,6 +600,35 @@ def test_real_pyav_fixture_unmaterialized_and_sampled():
 
     # All frames should have valid dimensions
     for r in result.records:
-        assert r.width == 320
-        assert r.height == 240
+        assert r.width == 896
+        assert r.height == 672
         assert r.timestamp_seconds is not None
+
+
+def test_selected_1920x1080_resized_and_persisted_at_configured_width(tmp_path):
+    tracker = {}
+    frames = [_make_mock_frame(0, 0.0, width=1920, height=1080, call_tracker=tracker),
+              _make_mock_frame(1, 0.5, width=1920, height=1080, call_tracker=tracker),
+              _make_mock_frame(2, 1.0, width=1920, height=1080, call_tracker=tracker)]
+    received = []
+    saved = []
+    dim = 8
+    def encoder(payloads):
+        received.extend(image.size for image in payloads)
+        value = np.zeros((len(payloads), dim), dtype=np.float32)
+        value[:, 0] = 1.0
+        return value
+    def save(frame):
+        saved.append(frame.image.size)
+        path = tmp_path / f"{frame.source_frame_index_zero_based}.jpg"
+        frame.image.save(path)
+        return str(path)
+    pipeline = BoundedStreamingPipeline(
+        config=StreamingPipelineConfig(sample_interval_seconds=1.0, image_width=896),
+        decoder_fn=lambda _: frames, encoder_fn=encoder, save_fn=save, embedding_dim=dim,
+    )
+    result = pipeline.run("resize-test")
+    assert received == [(896, 504), (896, 504)]
+    assert saved == [(896, 504), (896, 504)]
+    assert [(r.width, r.height) for r in result.records] == [(896, 504), (896, 504)]
+    assert tracker == {0: 1, 2: 1}

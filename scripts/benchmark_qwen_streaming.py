@@ -62,12 +62,12 @@ def main() -> int:
         "wall_seconds": round(wall_seconds, 3),
         "sampled_frames": sampled,
         "indexed_frames": report.get("indexed_frames", 0),
-        "extraction_seconds": round(float(item.get("extraction_ms") or 0.0) / 1000.0, 3),
-        "embedding_active_seconds": round(float(item.get("embedding_ms") or 0.0) / 1000.0, 3),
+        "decode_extraction_active_seconds": round(float(item.get("decode_extraction_active_ms") or item.get("extraction_ms") or 0.0) / 1000.0, 3),
+        "embedding_active_seconds": round(float(item.get("embedding_active_ms") or item.get("embedding_ms") or 0.0) / 1000.0, 3),
         "overlapped_wall_seconds": round(float(item.get("overlapped_wall_ms") or 0.0) / 1000.0, 3),
-        "qwen_seconds_per_frame": item.get("qwen_seconds_per_frame", 0.0),
-        "estimated_hours_for_200h": round((200.0 * wall_seconds / duration), 3) if duration > 0 else None,
-        "realtime_factor": round(duration / wall_seconds, 3) if wall_seconds > 0 else None,
+        "qwen_active_seconds_per_frame": item.get("qwen_active_seconds_per_frame", 0.0),
+        "estimated_hours_for_200h": round((200.0 * float(item.get("overlapped_wall_ms") or wall_seconds * 1000.0) / 1000.0 / duration), 3) if duration > 0 else None,
+        "realtime_factor": round(duration / (float(item.get("overlapped_wall_ms") or wall_seconds * 1000.0) / 1000.0), 3) if (duration > 0 and float(item.get("overlapped_wall_ms") or wall_seconds * 1000.0) > 0) else None,
         "failures": report.get("videos_failed", 0),
     }
     print(json.dumps(report, indent=2, ensure_ascii=False))

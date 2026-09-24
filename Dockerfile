@@ -90,6 +90,7 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 COPY backend backend
 COPY frontend frontend
 COPY projectctl.py .
+COPY scripts scripts
 
 # Ensure app directory permissions
 RUN chown -R appuser:appuser /app

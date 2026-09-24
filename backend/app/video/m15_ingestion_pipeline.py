@@ -260,9 +260,13 @@ class VideoIngestionPipeline:
                 result.progress.elapsed_seconds * 1000.0, max(0.0, elapsed * 1000.0 - result.progress.elapsed_seconds * 1000.0))
             report["streaming_progress"] = result.progress.to_dict()
             report["overlapped_wall_ms"] = round(result.progress.elapsed_seconds * 1000.0, 2)
+            report["embedding_active_ms"] = round(result.progress.embedding_active_seconds * 1000.0, 2)
+            report["decode_extraction_active_ms"] = round(
+                max(0.0, result.progress.elapsed_seconds - result.progress.embedding_active_seconds) * 1000.0, 2
+            )
             report["effective_batch_size"] = result.progress.effective_batch_size
-            report["qwen_seconds_per_frame"] = round(
-                (result.progress.elapsed_seconds / len(records)) if records else 0.0, 4
+            report["qwen_active_seconds_per_frame"] = round(
+                (result.progress.embedding_active_seconds / len(records)) if records else 0.0, 4
             )
             return report
         except Exception as exc:

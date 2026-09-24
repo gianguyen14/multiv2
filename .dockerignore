@@ -76,7 +76,10 @@ AIC2025-VideoRetrieval-float97/
 AI-Challenge-2026-Video-Retrieval-Panel/
 liệu/
 tools/
+# Allow only the required runtime validators and benchmark script from scripts/
 scripts/
-
+!scripts/
+!scripts/validate_gpu_ingest.py
+!scripts/benchmark_qwen_streaming.py
 # Frontend development extras
 node_modules/

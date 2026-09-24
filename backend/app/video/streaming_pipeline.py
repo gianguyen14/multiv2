@@ -163,6 +163,7 @@ class StreamingProgress:
     embed_fps: float = 0.0
     effective_batch_size: int = 1
     elapsed_seconds: float = 0.0
+    embedding_active_seconds: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -178,6 +179,7 @@ class StreamingProgress:
             "embed_fps": self.embed_fps,
             "effective_batch_size": self.effective_batch_size,
             "elapsed_seconds": self.elapsed_seconds,
+            "embedding_active_seconds": self.embedding_active_seconds,
         }
 
 
@@ -302,11 +304,24 @@ def iter_unmaterialized_frames(path: Union[str, Path], decode_threads: int = 8) 
                 pass
 
 
+
+def resize_selected_image(image: Image.Image, target_width: int) -> Image.Image:
+    """Resize only a selected RGB image, preserving aspect ratio and even height."""
+    image = image.convert("RGB")
+    if target_width < 2:
+        raise ValueError("target image width must be >= 2")
+    height = max(2, round(image.height * target_width / image.width))
+    if height % 2:
+        height += 1
+    return image.resize((target_width, height), Image.Resampling.LANCZOS)
+
+
 def stream_sample_frames(
     frames: Iterable[Any],
     interval_seconds: float = 1.0,
     policy: Optional[FrameIdPolicy] = None,
     video_id: str = "",
+    image_width: int = 896,
 ) -> Iterator[SelectedFrame]:
     """Sample frames at regular intervals without materializing non-selected frames.
 
@@ -344,7 +359,9 @@ def stream_sample_frames(
 
             if candidate.source_frame_index_zero_based != last_selected_index:
                 # Materialize ONLY selected candidate
-                materialized_img = _materialize_frame_image(candidate)
+                materialized_img = resize_selected_image(
+                    _materialize_frame_image(candidate), image_width
+                )
                 sub_id = policy.to_submission_frame_id(candidate.source_frame_index_zero_based)
 
                 yield SelectedFrame(
@@ -352,8 +369,8 @@ def stream_sample_frames(
                     submission_frame_id=sub_id,
                     pts=candidate.pts,
                     timestamp_seconds=candidate.timestamp_seconds,
-                    width=candidate.width,
-                    height=candidate.height,
+                    width=materialized_img.width,
+                    height=materialized_img.height,
                     image=materialized_img,
                     image_path=getattr(candidate, "image_path", None),
                     target_timestamp_seconds=target,
@@ -491,6 +508,7 @@ class BoundedStreamingPipeline:
                         interval_seconds=self.config.sample_interval_seconds,
                         policy=self.policy,
                         video_id=video_id,
+                        image_width=self.config.image_width,
                     )
 
                 # 3. Put into bounded queue (blocks when queue is full -> backpressure)
@@ -545,6 +563,7 @@ class BoundedStreamingPipeline:
             # Encode selected PIL images directly when the encoder supports image
             # payloads. Persistence futures continue while the GPU is embedding.
             payloads = [f.image if f.image is not None else f.image_path for f in frames]
+            embed_started = time.perf_counter()
             if self.encoder_fn is not None:
                 raw_embs = self.encoder_fn(payloads)
             elif self.encoder is not None:
@@ -560,6 +579,7 @@ class BoundedStreamingPipeline:
                 eye[:, 0] = 1.0  # L2 normalized dummy
                 raw_embs = eye
 
+            progress.embedding_active_seconds = getattr(progress, "embedding_active_seconds", 0.0) + (time.perf_counter() - embed_started)
             # Validate vector contract
             if self.config.validate_contract:
                 validated_embs = validate_vector_contract(
