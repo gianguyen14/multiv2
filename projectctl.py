@@ -283,7 +283,10 @@ def ingest_report(args):
         embed_batch_size=batch_size, index_type=args.index_type, ingest_backend=backend,
         gpu_strict=gpu_strict, qwen_dtype=qwen_dtype,
         qwen_batch_min=int(os.getenv("GPU_BATCH_MIN", "1")),
-        qwen_batch_max=int(os.getenv("GPU_BATCH_MAX", "32")))
+        qwen_batch_max=int(os.getenv("GPU_BATCH_MAX", "32")),
+        qwen_image_width=getattr(args, "qwen_image_width", int(os.getenv("VIDEO_QWEN_IMAGE_WIDTH", "896"))),
+        decode_threads=getattr(args, "decode_threads", int(os.getenv("VIDEO_DECODE_THREADS", "8"))),
+        ingest_queue_depth=getattr(args, "queue_depth", int(os.getenv("VIDEO_INGEST_QUEUE_DEPTH", "8"))))
     preflight = resource_preflight(args.path, config.processed_root)
     models = model_inventory(args.whisper_model)
     preflight["visual"] = {"runtime_ready": _module("transformers") and _module("torch"),
@@ -690,6 +693,15 @@ def command_evaluate(args):
         subprocess.run([sys.executable, "-m", "eval.m22_pipeline_benchmark"], check=True)
 
 
+def command_benchmark_qwen_streaming(args):
+    command = [sys.executable, str(ROOT / "scripts" / "benchmark_qwen_streaming.py"),
+        "--input", args.input, "--output", args.output,
+        "--sample-interval", str(args.sample_interval), "--width", str(args.width),
+        "--dtype", args.dtype, "--batch-size", str(args.batch_size),
+        "--queue-depth", str(args.queue_depth), "--decode-threads", str(args.decode_threads)]
+    subprocess.run(command, check=True)
+
+
 def command_benchmark(args):
     environment = os.environ.copy()
     if args.device:
@@ -793,6 +805,16 @@ def parser():
     item = sub.add_parser("benchmark", parents=[common])
     item.add_argument("--device")
     item.set_defaults(handler=command_benchmark)
+    item = sub.add_parser("benchmark-qwen-streaming", parents=[common])
+    item.add_argument("--input", default="N001-V001.mov")
+    item.add_argument("--output-dir", dest="output", default="data/benchmarks/qwen-streaming")
+    item.add_argument("--sample-interval", type=float, default=10.0)
+    item.add_argument("--width", type=int, default=896)
+    item.add_argument("--dtype", default="float16", choices=("auto", "bfloat16", "float16", "float32"))
+    item.add_argument("--batch-size", type=int, default=1)
+    item.add_argument("--queue-depth", type=int, default=8)
+    item.add_argument("--decode-threads", type=int, default=8)
+    item.set_defaults(handler=command_benchmark_qwen_streaming)
     item = sub.add_parser("benchmark-index", parents=[common])
     item.add_argument("--scales", nargs="+", type=int, default=[10000, 100000])
     item.add_argument("--dim", type=int, default=768)
@@ -851,6 +873,9 @@ def parser():
         item.add_argument("--asr-device")
         item.add_argument("--asr-compute-type")
         item.add_argument("--batch-size", type=lambda value: None if value == "auto" else int(value))
+        item.add_argument("--qwen-image-width", dest="qwen_image_width", type=int, default=int(os.getenv("VIDEO_QWEN_IMAGE_WIDTH", "896")))
+        item.add_argument("--decode-threads", type=int, default=int(os.getenv("VIDEO_DECODE_THREADS", "8")))
+        item.add_argument("--queue-depth", type=int, default=int(os.getenv("VIDEO_INGEST_QUEUE_DEPTH", "8")))
         item.add_argument("--preflight-only", action="store_true")
         item.add_argument("--limit", type=int)
         item.add_argument("--index-type", default="flat", choices=("flat", "hnsw"))

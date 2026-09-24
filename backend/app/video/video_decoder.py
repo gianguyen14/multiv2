@@ -75,26 +75,42 @@ def inspect_video(path, ingestion_version="m15-v1") -> VideoMetadata:
     )
 
 
-def iter_frames(path) -> Iterator[DecodedFrame]:
+def iter_frames(path, decode_threads: int = 8) -> Iterator[DecodedFrame]:
     try:
         import av
     except ImportError as exc:
         raise VideoDecodeError("PyAV is required for video decoding") from exc
+    previous_av_level = None
     try:
+        import av.logging
+        previous_av_level = av.logging.get_level()
+        av.logging.set_level(av.logging.ERROR)
         with av.open(str(path)) as container:
             stream = next((item for item in container.streams if item.type == "video"), None)
             if stream is None:
                 raise VideoDecodeError("video stream is missing")
+            stream.thread_type = "AUTO"
+            if decode_threads:
+                stream.thread_count = int(decode_threads)
             for index, frame in enumerate(container.decode(stream)):
                 time_base = frame.time_base or stream.time_base
                 timestamp = None
                 if frame.pts is not None and time_base is not None:
                     timestamp = float(Fraction(frame.pts) * Fraction(time_base))
-                yield DecodedFrame(index, frame.pts, timestamp, frame.width, frame.height, frame.to_image().convert("RGB"))
+                yield DecodedFrame(
+                    index, frame.pts, timestamp, frame.width, frame.height,
+                    frame.to_image().convert("RGB"),
+                )
     except VideoDecodeError:
         raise
     except Exception as exc:
         raise VideoDecodeError(f"unable to decode video: {path}") from exc
+    finally:
+        if previous_av_level is not None:
+            try:
+                av.logging.set_level(previous_av_level)
+            except Exception:
+                pass
 
 
 def inspect_and_count_video(path, ingestion_version="m15-v1"):

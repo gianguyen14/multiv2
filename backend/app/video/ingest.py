@@ -91,6 +91,9 @@ def main():
     parser.add_argument("--ingest-backend", default=os.getenv("INGEST_BACKEND", "qwen3_vl"), choices=("siglip2", "qwen3_vl"))
     parser.add_argument("--gpu-strict", action="store_true", default=os.getenv("GPU_STRICT", "false").lower() in ("1", "true", "yes"))
     parser.add_argument("--qwen-dtype", default=os.getenv("QWEN_DTYPE", "auto"), choices=("auto", "bfloat16", "float16", "float32"))
+    parser.add_argument("--qwen-image-width", type=int, default=int(os.getenv("VIDEO_QWEN_IMAGE_WIDTH", "896")))
+    parser.add_argument("--decode-threads", type=int, default=int(os.getenv("VIDEO_DECODE_THREADS", "8")))
+    parser.add_argument("--queue-depth", type=int, default=int(os.getenv("VIDEO_INGEST_QUEUE_DEPTH", "8")))
     parser.add_argument("--limit", type=int)
     parser.add_argument("--resume", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--force", action="store_true")
@@ -100,7 +103,8 @@ def main():
         embed_batch_size=args.batch_size, device=args.device, resume=args.resume,
         ingest_backend=args.ingest_backend, gpu_strict=args.gpu_strict,
         qwen_dtype=args.qwen_dtype, qwen_batch_min=int(os.getenv("GPU_BATCH_MIN", "1")),
-        qwen_batch_max=int(os.getenv("GPU_BATCH_MAX", "32")))
+        qwen_batch_max=int(os.getenv("GPU_BATCH_MAX", "32")), qwen_image_width=args.qwen_image_width,
+        decode_threads=args.decode_threads, ingest_queue_depth=args.queue_depth)
     encoder = create_ingest_encoder(config)
     report = ingest_path(args.input, encoder, config, args.limit, args.force, args.fail_fast)
     print(json.dumps(report, indent=2, sort_keys=True))

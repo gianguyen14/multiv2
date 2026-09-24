@@ -33,6 +33,9 @@ class VideoIngestConfig:
     qwen_dtype: str = "auto"
     qwen_batch_min: int = 1
     qwen_batch_max: int = 32
+    qwen_image_width: int = 896
+    decode_threads: int = 8
+    ingest_queue_depth: int = 8
 
     @property
     def effective_sample_interval_seconds(self) -> float:
@@ -83,6 +86,10 @@ class VideoIngestConfig:
             raise ValueError("Qwen production ingest requires embedding dimension 1024")
         if self.qwen_batch_min < 1 or self.qwen_batch_max < self.qwen_batch_min:
             raise ValueError("invalid Qwen batch bounds")
+        if self.qwen_image_width < 2 or self.qwen_image_width % 2:
+            raise ValueError("Qwen image width must be an even integer >= 2")
+        if self.decode_threads < 1 or self.ingest_queue_depth < 1:
+            raise ValueError("decode_threads and ingest_queue_depth must be positive")
 
     @classmethod
     def from_env(cls):
@@ -119,6 +126,9 @@ class VideoIngestConfig:
             qwen_dtype=os.getenv("QWEN_DTYPE", "auto").strip().lower(),
             qwen_batch_min=int(os.getenv("GPU_BATCH_MIN", "1")),
             qwen_batch_max=int(os.getenv("GPU_BATCH_MAX", "32")),
+            qwen_image_width=int(os.getenv("VIDEO_QWEN_IMAGE_WIDTH", "896")),
+            decode_threads=int(os.getenv("VIDEO_DECODE_THREADS", "8")),
+            ingest_queue_depth=int(os.getenv("VIDEO_INGEST_QUEUE_DEPTH", "8")),
         )
 
     def metadata_fingerprint(self):
@@ -136,6 +146,7 @@ class VideoIngestConfig:
             "jpeg_quality": self.jpeg_quality if self.frame_format in {"jpg", "webp"} else None,
             "frame_schema": 2,
             "sampling_policy": "nearest-observed-timestamp-earlier-tie-v1",
+            "qwen_image_width": self.qwen_image_width,
         })
 
     def embeddings_fingerprint(self, encoder_identity):

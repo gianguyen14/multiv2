@@ -1,3 +1,4 @@
+import logging
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -14,6 +15,13 @@ from backend.app.video.frame_sampler import iter_sample_frames, sample_sparse_sh
 from backend.app.video.frame_store import FrameStore, source_hash
 from backend.app.video.ingest_manifest import IngestManifest
 from backend.app.video.video_decoder import inspect_video, iter_frames
+logger = logging.getLogger(__name__)
+
+from backend.app.video.streaming_pipeline import (
+    BoundedStreamingPipeline,
+    StreamingPipelineConfig,
+    iter_unmaterialized_frames,
+)
 
 
 class VideoIngestionPipeline:
@@ -64,6 +72,12 @@ class VideoIngestionPipeline:
                         completed_stage="embeddings", failed_stage=None, error=None)
                     self.store.save_manifest(current)
                 return self._result(metadata, records, plan, started, 0, 0, 0)
+            # Qwen image ingest uses the bounded streaming path. Legacy SigLIP2
+            # retains the established staged implementation below.
+            if self.config.ingest_backend == "qwen3_vl" and identity.get("backend") == "qwen3_vl":
+                return self._ingest_qwen_streaming(
+                    path, video_id, stat, digest, identity, checkpoint, plan, started
+                )
             if plan.start_stage == "metadata":
                 stage_started = time.perf_counter()
                 metadata = inspect_video(path, self.config.ingestion_version)
@@ -80,7 +94,7 @@ class VideoIngestionPipeline:
                 decoded_count = 0
                 def counted_frames():
                     nonlocal decoded_count
-                    for decoded_frame in iter_frames(path):
+                    for decoded_frame in iter_frames(path, self.config.decode_threads):
                         decoded_count = decoded_frame.source_frame_index_zero_based + 1
                         yield decoded_frame
                 frame_dir = self.store.video_dir(video_id) / "frames"
@@ -170,6 +184,91 @@ class VideoIngestionPipeline:
         except Exception as exc:
             latest = self.store.load_manifest(video_id) or checkpoint
             self.store.save_manifest(replace(latest, status="failed", failed_stage={"metadata": "metadata", "frames": "frames", "embeddings": "embeddings", "complete": None}[plan.start_stage], error=f"{type(exc).__name__}: {exc}"))
+            raise
+
+    def _ingest_qwen_streaming(self, path, video_id, stat, digest, identity, checkpoint, plan, started):
+        """Stream selected frames directly from decode into the single Qwen consumer.
+
+        Artifacts are published only after the complete stream validates. A failed
+        stream leaves a failed manifest and no completed embeddings artifact.
+        """
+        stage_started = time.perf_counter()
+        base = IngestManifest(video_id, str(path.resolve()), stat.st_size, stat.st_mtime_ns,
+            digest, self.config.ingestion_version, encoder_identity=identity)
+        if plan.start_stage == "metadata":
+            metadata = inspect_video(path, self.config.ingestion_version)
+            self.store.save_metadata(metadata)
+            checkpoint = replace(base, status="metadata_ready", completed_stage="metadata",
+                metadata_fingerprint=self.config.metadata_fingerprint(), failed_stage=None, error=None)
+            self.store.save_manifest(checkpoint)
+            self.failpoint("after_metadata", {"video_id": video_id})
+        else:
+            metadata = self.store.load_metadata(video_id)
+
+        frame_dir = self.store.video_dir(video_id) / "frames"
+        frame_dir.mkdir(parents=True, exist_ok=True)
+        # Incomplete streaming output is never reused as complete stage data.
+        for item in frame_dir.glob("*.*"):
+            item.unlink()
+        queue_config = StreamingPipelineConfig(
+            queue_depth=self.config.ingest_queue_depth,
+            batch_size=1,
+            sample_interval_seconds=self.config.effective_sample_interval_seconds,
+            image_width=self.config.qwen_image_width,
+            frame_id_policy=self.config.frame_id_policy,
+            ingestion_version=self.config.ingestion_version,
+            persistence_workers=2,
+            decode_threads=self.config.decode_threads,
+            progress_interval_seconds=3.0,
+        )
+        progress_snapshots = []
+        def report(progress):
+            snapshot = progress.to_dict()
+            progress_snapshots.append(snapshot)
+            logger.info("qwen_streaming_progress %s", snapshot)
+        def save_selected(frame):
+            target = self.store.image_path(video_id, frame.source_frame_index_zero_based, self.config.frame_format)
+            self.store.save_image(target, frame.image, self.config.frame_format, self.config.jpeg_quality)
+            return str(target)
+        streaming = BoundedStreamingPipeline(
+            config=queue_config,
+            decoder_fn=lambda _: iter_unmaterialized_frames(path, self.config.decode_threads),
+            encoder=self.encoder,
+            save_fn=save_selected,
+            progress_callback=report,
+            embedding_dim=identity["embedding_dim"],
+        )
+        try:
+            result = streaming.run(path, video_id=video_id)
+            records = result.records
+            embeddings = result.embeddings
+            metadata = replace(metadata, decoded_frame_count=result.progress.decoded_frames)
+            self.store.save_metadata(metadata)
+            self.store.save_records(video_id, records)
+            self.store.save_embeddings(video_id, embeddings)
+            checkpoint = replace(checkpoint, status="embeddings_ready", completed_stage="embeddings",
+                metadata_fingerprint=self.config.metadata_fingerprint(),
+                frames_fingerprint=self.config.frames_fingerprint(),
+                embeddings_fingerprint=self.config.embeddings_fingerprint(identity),
+                encoder_identity=identity, decoded_frame_count=result.progress.decoded_frames,
+                sampled_frame_count=len(records), embedding_count=len(records),
+                embedding_dim=identity["embedding_dim"], failed_stage=None, error=None)
+            self.store.save_manifest(checkpoint)
+            self.failpoint("after_embeddings", {"video_id": video_id})
+            elapsed = time.perf_counter() - started
+            report = self._result(metadata, records, plan, started, 0.0,
+                result.progress.elapsed_seconds * 1000.0, max(0.0, elapsed * 1000.0 - result.progress.elapsed_seconds * 1000.0))
+            report["streaming_progress"] = result.progress.to_dict()
+            report["overlapped_wall_ms"] = round(result.progress.elapsed_seconds * 1000.0, 2)
+            report["effective_batch_size"] = result.progress.effective_batch_size
+            report["qwen_seconds_per_frame"] = round(
+                (result.progress.elapsed_seconds / len(records)) if records else 0.0, 4
+            )
+            return report
+        except Exception as exc:
+            latest = self.store.load_manifest(video_id) or checkpoint
+            self.store.save_manifest(replace(latest, status="failed", failed_stage="embeddings",
+                error=f"{type(exc).__name__}: {exc}"))
             raise
 
     def _result(self, metadata, records, plan, started, metadata_ms, extraction_ms, embedding_ms):
