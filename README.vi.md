@@ -2,7 +2,7 @@
 
 # 🎬 Unified Video Retrieval
 
-### Hệ thống truy hồi video đa phương thức, ưu tiên vận hành cục bộ
+### Truy hồi video đa phương thức, ưu tiên chạy cục bộ
 
 **Văn bản → Khung hình · Video Q&A · TRAKE · OCR · ASR** (Tìm kiếm bằng ảnh: chỉ có trên nhánh thử nghiệm)
 
@@ -15,7 +15,7 @@
 
 **[English](README.md) · Tiếng Việt**
 
-*Hệ thống truy hồi (retrieval) ưu tiên khả năng chạy cục bộ và ngoại tuyến, tập trung vào việc tìm đúng video, đúng khung hình và đúng chuỗi sự kiện theo thời gian.*
+*Một hệ thống truy hồi thân thiện với môi trường cục bộ/ngoại tuyến, được xây dựng để tìm đúng video, đúng khung hình và đúng chuỗi theo thời gian.*
 
 </div>
 
@@ -31,7 +31,7 @@
 | 🖼️ **Image Search** | Ảnh truy vấn | Các khung hình tương đồng về hình ảnh | **KHÔNG KHẢ DỤNG TRÊN `main` HIỆN TẠI** (nhánh thử nghiệm) |
 | 🔤 **OCR / ASR** | Khung hình + âm thanh | Bằng chứng văn bản có thể tìm kiếm | Spool được tính trước khi ingest ngoại tuyến |
 
-Backend tìm kiếm production là **Qwen3-VL-Embedding-2B** (1024-d). SigLIP2 — backend mặc định trước đây — hiện là **LEGACY** và chỉ được dùng khi bật rõ ràng. Hệ thống hỗ trợ truy vấn tiếng Việt và tiếng Anh. **Image Search không khả dụng trên backend `main` hiện tại** — chức năng này chỉ tồn tại trên một nhánh thử nghiệm, còn chờ xác minh GPU và chưa được merge hoặc bật.
+Backend tìm kiếm dùng trong production là **Qwen3-VL-Embedding-2B** (1024-d). SigLIP2 — backend mặc định trước đây — hiện là **LEGACY** và chỉ được sử dụng khi được bật một cách tường minh. Hệ thống hỗ trợ truy vấn tiếng Việt và tiếng Anh. **Image Search không khả dụng trên backend `main` hiện tại** — tính năng này chỉ tồn tại trên một nhánh thử nghiệm, còn chờ xác minh GPU, chưa được hợp nhất hoặc kích hoạt.
 
 ---
 
@@ -76,7 +76,7 @@ Backend tìm kiếm production là **Qwen3-VL-Embedding-2B** (1024-d). SigLIP2 �
                                      `remote_llm` tùy chọn)
 ```
 
-> **Backend production:** Qwen3-VL-Embedding-2B trên FAISS `IndexFlatIP` (1024-d), đọc cơ sở dữ liệu packed ở chế độ chỉ đọc. SigLIP2 (`ConfiguredSearch` / RRF / Dense `TemporalRefiner`) là **legacy** và chỉ chạy khi `SEARCH_BACKEND=siglip2`.
+> **Backend production:** Qwen3-VL-Embedding-2B trên FAISS `IndexFlatIP` (1024-d), chỉ đọc cơ sở dữ liệu packed. SigLIP2 (`ConfiguredSearch` / RRF / Dense `TemporalRefiner`) là **legacy** và chỉ chạy khi `SEARCH_BACKEND=siglip2`.
 > **Câu trả lời Video Q&A** đến từ bằng chứng OCR/ASR (trích xuất) hoặc bước `remote_llm` tùy chọn; xem `docs/QA_SYNTHESIS.md`.
 > **Image Search** **không khả dụng trên `main` hiện tại** — chỉ có trên nhánh thử nghiệm và còn chờ xác minh GPU.
 
@@ -95,7 +95,7 @@ Hệ thống **không** tái tạo `frame_id` chuẩn bằng công thức `times
 
 ## 📚 Tài liệu kỹ thuật
 
-Thư mục `docs/` là nguồn tham chiếu kỹ thuật chính thức:
+Thư mục `docs/` là tài liệu tham chiếu kỹ thuật chính thức:
 
 | Chủ đề | Tài liệu |
 |---|---|
@@ -109,7 +109,7 @@ Thư mục `docs/` là nguồn tham chiếu kỹ thuật chính thức:
 | Quickstart 5 bước | [`docs/QUICKSTART.md`](docs/QUICKSTART.md) |
 | Architecture Decision Records | [`docs/ADR/`](docs/ADR/) |
 
-Các log milestone lịch sử và báo cáo freeze được lưu trong [`docs/archive/`](docs/archive/) và được bảo tồn trong lịch sử Git.
+Các nhật ký milestone trước đây và báo cáo freeze được lưu trong [`docs/archive/`](docs/archive/) và được giữ lại trong lịch sử Git.
 
 ---
 
@@ -117,7 +117,7 @@ Các log milestone lịch sử và báo cáo freeze được lưu trong [`docs/a
 
 Docker là cách chạy được khuyến nghị trên **Linux** và **Windows 10/11**.
 
-Docker image đã tích hợp các thành phần hệ thống cần thiết cho ứng dụng, gồm Python 3.12, FFmpeg, Tesseract, Git, GCC và G++.
+Image Docker chứa các dependency Linux cốt lõi mà ứng dụng sử dụng, gồm Python 3.12, FFmpeg, Tesseract, Git, GCC và G++.
 
 ## Yêu cầu
 
@@ -695,7 +695,7 @@ projectctl.py  CLI quản trị và điểm vào chính của project
 
 **`1.1.0-rc3` — mã nguồn đang ở giai đoạn kiểm thử trước khi phát hành**
 
-Bản release candidate đang được xác minh trên môi trường NVIDIA GPU mục tiêu trước khi được promote. Mọi tuyên bố về hiệu năng phải dựa trên dataset đại diện và kết quả xác minh đã được ghi nhận.
+Bản release candidate đang được xác minh trên môi trường NVIDIA GPU mục tiêu trước khi được đưa lên phát hành. Mọi tuyên bố về hiệu năng phải dựa trên các dataset đại diện và kết quả xác minh đã được ghi nhận.
 
 <div align="center">
 
